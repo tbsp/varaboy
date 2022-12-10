@@ -1,0 +1,2126 @@
+( varaboy.tal )
+
+( *** devices *** )
+|00 @System     [ &vector $2 &pad $6 &r $2 &g $2 &b $2 &debug $1 &state $1 ]
+|10 @Console    [ &vector $2 &read $1 &pad $5 &write $1 &error $1 ]
+|20 @Screen     [ &vector $2 &width $2 &height $2 &auto $1 &pad $1 &x $2 &y $2 &addr $2 &pixel $1 &sprite $1 ]
+|80 @Controller [ &vector $2 &button  $1 &key $1 ]
+|90 @Mouse      [ &vector $2 &x $2 &y $2 &state $1 &pad $3 &scrollx $2 &scrolly $2 ]
+|a0 @File0      [ &vector $2 &success $2 &stat $2 &delete $1 &append $1 &name $2 &length $2 &read $2 &write $2 ]
+|b0 @File1      [ &vector $2 &success $2 &stat $2 &delete $1 &append $1 &name $2 &length $2 &read $2 &write $2 ]
+
+( *** macros *** )
+%EMIT { .Console/write DEO }
+%HALT { #01 .System/state DEO }
+%DBG { #01 .System/debug DEO }
+
+( stdin vs hardcoded filepath )
+%READFILE { ;on-console .Console/vector DEO2 }
+%xREADFILE { ;default-gb ;filepath ;scpy JSR2 ;start JMP2 } ( Note: Switch to this READFILE when using uxn32 to debug )
+
+( release macros )
+%INIT { ;on-frame .Screen/vector DEO2 ;on-button .Controller/vector DEO2 }
+%VBLANK { POP2 POP2 BRK }
+%PRINTSTATE { }
+
+( cli debug macros )
+( Note: Switch to this set of macros when using uxncli to dump register trace logs )
+%xINIT { ;on-frame JMP2 }
+%xVBLANK { ,&afterModeChange JMP }
+%xPRINTSTATE { ;print-state JSR2 }
+
+( *** macros to inline functions for speed benefits *** )
+%READ8PC { TICK [ ;PC LDA2k INC2k ROT2 STA2 ] LDA }
+( TODO: binji notes that it's necessary to read8/pc++, then read8/pc++ again to avoid undefined behaviour. Do that? )
+%READ16 { [ LDA2k INC2k INC2 ROT2 STA2 ] LDA2 SWP TICK2 }
+%READ16PC { ;PC READ16 }
+%GET-R8-ADDR { [ DUP #06 NEQ ,&simpleR8 JCN [ POP ;reg8/H LDA2 TICK ] ] ,&r8ready JMP &simpleR8 #00 SWP ;reg8 ADD2 &r8ready }
+%GET-R8-ADDR_2 { [ DUP #06 NEQ ,&simpleR8_2 JCN [ POP ;reg8/H LDA2 TICK ] ] ,&r8ready_2 JMP &simpleR8_2 #00 SWP ;reg8 ADD2 &r8ready_2 } ( simple duplicate to allow second use in same instr handler )
+%GETSET-R8-ADDR { [ DUP #06 NEQ ,&simpleR8 JCN [ POP ;reg8/H LDA2 TICK2 ] ] ,&r8ready JMP &simpleR8 #00 SWP ;reg8 ADD2 &r8ready } ( tick twice since [HL] will be written )
+%GET-R16-GROUP1-ADDR { DUP #30 AND #03 SFT [ DUP #06 NEQ ,&notSP JCN INC INC &notSP ] #00 SWP ;reg8 ADD2 }
+%TICK { ;cycles LDA2k #0004 ADD2 SWP2 STA2 }
+%TICK2 { ;cycles LDA2k #0008 ADD2 SWP2 STA2 }
+%POPSHORT { ;reg8/SPhigh READ16 }
+
+( *** Gameboy Memory Map *** )
+|0000
+@rom0
+
+( * Interrupt Vectors * )
+|0040
+@vectorVBlank
+|0048
+@vectorSTAT
+|0050
+@vectorTimer
+|0058
+@vectorSerial
+|0060
+@vectorJoypad
+
+|4000
+@romx
+
+( The ROM header is read into romx for inspection on startup )
+|4100
+@header
+&entryPoint $4
+&logo $30
+&title $0b
+&manufCode $4
+&cgbFlag $1
+&newLicenseeCode $2
+&sgbFlag $1
+&cartridgeType $1
+&romSize $1
+&ramSize $1
+&destinationCode $1
+&oldLicenseeCode $1
+&maskRomVersion $1
+&headerChecksum $1
+&globalChecksum $2
+
+|8000
+@vram
+
+|a000
+@sram
+
+|c000
+@wram
+
+|fe00
+@oam
+
+|ff00 ( IO register layout )
+@io [ &rP1 $1 &rSB $1 &rSC $1 ]
+    [ &rDIVlow $1 ]
+    [ &rDIV $1 &rTIMA $1 &rTMA $1 &rTAC $1 ]
+    [ $7 ]
+    [ &rIF $1 ]
+    [ &rNR10 $1 &rNR11 $1 &rNR12 $1 &rNR13 $1 &rNR14 $1 ]
+    [ &rNR20 $1 &rNR21 $1 &rNR22 $1 &rNR23 $1 &rNR24 $1 ]
+    [ &rNR30 $1 &rNR31 $1 &rNR32 $1 &rNR33 $1 &rNR34 $1 ]
+    [ &rNR40 $1 &rNR41 $1 &rNR42 $1 &rNR43 $1 &rNR44 $1 ]
+    [ &rNR50 $1 &rNR51 $1 &rNR52 $1 ]
+    [ $19 ]
+    [ &rLCDC $1 &rSTAT $1 &rSCY $1 &rSCX $1 &rLY $1 &rLYC $1 ]
+    [ &rDMA $1 ]
+    [ &rBGP $1 &rOBP0 $1 &rOBP1 $1 ]
+    [ &rWY $1 &rWX $1 ]
+    [ $1 ]
+    [ &rKEY1 $1 ] ( CGB only )
+    [ $1 ]
+    [ &rVBK $1 ] ( CGB only )
+    [ $1 ]
+    [ &rHDMA1 $1 &rHDMA2 $1 &rHDMA3 $1 &rHDMA4 $1 &rHDMA5 $1 ] ( CGB only )
+    [ &rRP $1 ] ( CGB only )
+    [ $11 ]
+    [ &rBCPS $1 &rBCPD $1 ] ( CGB only )
+    [ &rOCPS $1 &rOCPD $1 ] ( CGB only )
+    [ $4 ]
+    [ &rSVBK $1 ] ( CGB only )
+    [ $5 ]
+    [ &rPCM12 $1 &rPCM34 $1 ]
+
+|ff80
+@hram
+
+|ffff
+@rIE
+
+( *** uxn entry point - overwritten by ROM contents after startup *** )
+( Note: Only code/data in the e000-fdff range is "safe" during runtime. Code/data here
+  must only be used for startup, or copied to the safe region for use during runtime. )
+|0100
+  ( meta )
+  ;meta #f0 DEO2
+
+  ( theme )
+  #fc40 .System/r DEO2
+  #fc40 .System/g DEO2
+  #fc40 .System/b DEO2
+  ;load-theme JSR2
+
+	( size )
+  #00a0 .Screen/width DEO2
+  #0090 .Screen/height DEO2
+
+  ( TODO: find a way to automatically load a default ROM if none is provided on the command line )
+  READFILE
+BRK
+
+@on-console ( -> )
+
+  ;filepath STH2
+  ( read source )
+  .Console/read DEI
+  DUP #20 LTH OVR #7f GTH ORA ,&end JCN
+  STH2kr ;slen JSR2 #003f GTH2 ,&end JCN
+    STH2r ;sput JSR2 BRK
+    &end
+  POP
+
+  STH2r ;start JSR2
+
+BRK
+
+@start ( src* -- )
+
+  ( build .sav version of filename for SRAM, even if not battery backed )
+  ;filepath ;savepath STH2k ;scpy JSR2 ( copy filepath to savepath )
+  ;saveExtension ( source for .sav extension )
+  STH2kr ;slen JSR2 #02 SUB STH2kr ADD2 ( get addr of start of extension, assuming 2 letter (gb) extension )
+  ;scpy JSR2 ( copy sav extension over gb )
+  STH2r .File1/name DEO2
+
+  ( Detect MBC type and copy handler to @MBCHandler )
+  ;filepath .File0/name DEO2
+	#0150 .File0/length DEO2 ( read header to romx for inspection )
+	;romx .File0/read DEO2
+  #0000 .File0/name DEO2 ( close file to reset addr )
+
+  #00 ;header/ramSize LDA
+  ;SRAMBankCounts ADD2 LDA ( get number of SRAM banks )
+  DUP #00 EQU ,&noSRAM JCN
+    DUP ;SRAMBanks STA ( store for use during banking )
+    #2000 .File1/length DEO2 ( SRAM banks are 8KB )
+    ;sram .File1/read DEO2 ( attempt read from file )
+    .File1/success DEI2 #0000 NEQ2 ( check success value ) ,&saveFileExists JCN
+      ( zero-fill SRAM file to full size )
+      #00 ( counter )
+      &SRAMFillLoop
+        ;sram .File1/write DEO2
+      INC GTHk ,&SRAMFillLoop JCN
+      POP
+    &saveFileExists
+    ( If more than one bank is used, unpack each into a distinct file named _bankX.sav )
+    ( Note: This is done so that each SRAM bank can be quickly dumped to disk during SRAM 
+      bank swaps. The bank files are repacked on shutdown. )
+    ;savepath .File1/name DEO2 ( Reset file seek location )
+    DUP #01 EQU DUP ;isSingleRAMBank STA ,&singleBank JCN
+      #2000 .File0/length DEO2 ( set length for writes to bank files )
+      #00 ( counter )
+      &unpackLoop
+        DUP #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+        ;bankPathDigit STA ( replace bank character in bankPath )
+        ;bankPath .File0/name DEO2 ( set name for bank file )
+        ;sram .File1/read DEO2k POP .File0/write DEO2 ( read from SAV file to memory, write out to bank file )
+        #0000 .File0/name DEO2 ( close bank file )
+      INC GTHk ,&unpackLoop JCN
+      POP
+      ;savepath .File1/name DEO2 ( Reset file seek location )
+    &singleBank
+    ( read SRAM file into SRAM, either single bank or initial multi-bank )
+    ;sram .File1/read DEO2
+  &noSRAM
+  POP
+  #0000 .File1/name DEO2 ( close SRAM file )
+
+  #00 ;header/cartridgeType LDA
+  DUP #1f GTH ,&unsupportedMBC JCN
+  #10 SFT ;MBCHandlerLookup ADD2 LDA2 ( handler start address )
+  ;MBCHandler ( destination addr )
+  #0080 ( bytes to copy, divided by two )
+
+  ( Just copy the max handler size regardless, as trailing data won't hurt )
+  ( Thanks to d_m for this copy routine! )
+  ( copies 2-byte pairs from src to dst )
+  ( @copy2 ( src* dst* count* -> ) )
+  #0000 SWP2 SUB2             ( src* dst* i* )
+  STH2 SWP2                   ( dst* src* [i*] )
+  &loop
+      LDA2k ROT2              ( src* bb* dst* [i*] )
+      STA2k NIP2 INC2 INC2 SWP2 INC2 INC2 INC2r   ( dst* src* [i+1*] )
+      ORAkr STHr ,&loop JCN   ( dst* src* [i+1*] )
+  POP2 POP2 POP2r             ( )
+
+  ( Initialize emulator state )
+  #04 ;frameSkip STA ( Note: A value of 1 means no frameskip )
+  #01 ;frameSkipCounter STA ( Must be 1 to draw the initial frame )
+  
+  ( Initialize CPU state )
+  ( Note: It feels strange to do this before the ROM is loaded, but doing it here
+    means we don't waste valuable safe address space on the code. )
+  #91 ;io/rLCDC STA
+  ( #02 ;io/rSTAT STA ( start in OAM search mode ) )
+  #ac00 ;io/rDIV STA2
+  #01 ;io/rLY STA ( #00 is likely fine, tuned to better match Emulicious cpu_instrs tracelog )
+  #e0 ;io/rIF STA ( IF is a 5 bit register, so the upper 3 bits must be set )
+
+  #ff ;joypad STA ( default to all buttons unpressed )
+  #ff #ff4d STA ( make KEY1 read #ff to workaround cpu_instrs test )
+
+  #ff ;bgwinMaskedXOffset STA ( reset bgwinMaskedXOffset to ensure fresh data on the next scanline )
+
+  ;varaboy JMP2 ( jump to program code )
+
+&unsupportedMBC
+  ;msg-unsupportedMBC ;pstr JSR2
+  HALT
+
+@msg-unsupportedMBC
+  "Unsupported 20 "MBC $1
+
+@meta =&end =appicon &body
+  ( name ) "Varaboy $1
+  ( version ) "Ver. 20 "1 $1
+  ( details ) "A 20 "Game 20 "Boy 20 "Emulator $1
+  ( author ) "Dave 20 "VanEe 20 7f 20 "2022 $1
+  &end $1
+
+@appicon
+  007f 0000 0000 7f7f 00ff 0000 0003 8c10  00ff 0000 00ff 0000 00ff 0000 00ff 0000
+  00ff 0000 00ff 0000 00ff 0000 00ff 0000  00ff 0000 00c0 3108 00fe 0000 0000 fefe
+  0000 7e7e 0000 7e7e 2020 4444 4242 4141  0000 4848 949c 2222 0000 e191 e293 9494
+  0000 1c12 9c92 525c 0000 728a 8988 8870  0404 2222 4282 8282 0000 7e7e 0000 7e7e
+  0000 7f7f 0000 0000 2020 108c 0300 0000  0000 0000 ff00 0000 0000 0000 ff00 0000
+  0000 0000 ff00 0000 0000 0000 ff00 0000  0404 0831 c000 0000 0000 fefe 0000 0000
+  0000 0000 0000 0000 1f20 4f50 5254 5050  ff00 ff00 0a04 0040 ff00 ff00 0a04 0240
+  ff00 ff00 8801 2204 ff00 ff4b 972e 5dbb  f804 f2ba 7aea daba 0000 0000 0000 0000
+  0000 0000 0000 0000 5050 5054 5254 5050  a040 0004 0a04 0240 a840 2200 8801 2204
+  8912 254b 972e 5dbb 77ee ddbb 77ee ddba  7aea daaa 5aaa 5aaa 0000 0000 0000 0000
+  0000 0000 0000 0000 5050 5054 5254 5250  a840 2200 8801 2204 8912 254b 972e 5dbb
+  77ee ddbb 77ee ddba 75ea d5aa 55aa 55aa  5aaa 5aaa 5aaa 7aba 0000 0000 0000 0000
+  0000 0000 0000 0000 5050 5250 5051 5254  8912 254b 972e 5dbb 77ee ddbb 77ee ddba
+  75ea d5aa 55aa 55aa 55aa 57ab 5dae 77bb  daea 7aba dafa 7afa 0000 0000 0000 0000
+  0000 0000 0000 0000 5952 555b 4f20 1f00  77ee ddbb ff00 ff00 75ea d5aa ff00 ff00
+  55aa 57ab ff00 ff00 ddef 77bf ff00 ff00  fafa fafa f204 f800 0000 0000 0000 0000
+ 
+( *** SRAM Bank Counts *** )
+@SRAMBankCounts [ 00 00 01 04 10 08 ]
+
+( *** MBC Handlers *** )
+( Note: These are stored here in the ROM with the appropriate handler being 
+  copied to the @MBC label at runtime. )
+
+@MBCHandlerLookup ( 00 ) [ =MBCNone      =MBC1Handler  =MBC1Handler =MBC1Handler  ]
+                  ( 04 ) [ =MBCInvalid   =MBC2Handler  =MBC2Handler =MBCInvalid   ]
+                  ( 08 ) [ =MBCNone      =MBCNone      =MBCInvalid  =MMM01Handler ]
+                  ( 0c ) [ =MMM01Handler =MMM01Handler =MBCNone     =MBC3Handler  ]
+                  ( 10 ) [ =MBC3Handler  =MBC3Handler  =MBC3Handler =MBC3Handler  ]
+                  ( 14 ) [ =MBCInvalid   =MBCInvalid   =MBCInvalid  =MBCInvalid   ]
+                  ( 18 ) [ =MBCInvalid   =MBC5Handler  =MBC5Handler =MBC5Handler  ]
+                  ( 1c ) [ =MBC5Handler  =MBC5Handler  =MBC5Handler =MBCInvalid   ]
+
+@MBCNone
+  STA
+JMP2r
+
+@MBCInvalid
+  ,MBCInvalid JMP
+
+@MBC1Handler
+
+  ( ROM bank number (2000-3fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #2000 NEQ2 ,&notROMBank JCN
+    POP2 ( discard addr )
+    DUP #00 NEQ ,&notBank0 JCN INC &notBank0 ( 0 -> bank 1 )
+    INC ( increment counter target )
+
+    ( since we can't seek, we read 16KB at a time into the ROM1
+      region until we've read the target bank )
+    ( TODO: Test unpacking banked ROMs into multiple files for faster bank swaps,
+      similar to SRAM. )
+    ;filepath .File0/name DEO2
+    #00 ( bank counter )
+    &ROMbankLoop
+      ;romx .File0/read DEO2 ( trigger the read to ROM1 )
+      INC GTHk ,&ROMbankLoop JCN
+    POP2
+    #0000 .File0/name DEO2 ( close file )
+    JMP2r
+  &notROMBank
+
+  ( RAM enable (0000-1fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #0000 NEQ2 ,&notRAMEnable JCN
+    POP2 ( discard addr )
+    #0f AND #0a EQU ,&enableRAM JCN
+      ( disable RAM )
+      #00 ;MBCRegs/RAMEnable STA
+      JMP2r
+
+    &enableRAM
+      #01 ;MBCRegs/RAMEnable STA ( enable RAM )
+      ;MBCRegs/RAMBank LDA ,&activateRAMBank JMP ( ensure the current RAM bank's data is loaded )
+  &notRAMEnable
+
+  ( RAM bank number (4000-5fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #4000 NEQ2 ,&notRAMBank JCN
+    POP2 ( discard addr )
+
+    DUP ;MBCRegs/RAMBank STA ( write new bank number )
+    ;MBCRegs/RAMEnable LDA ,&ramEnabled JCN
+      POP JMP2r ( RAM not active, don't load the data )
+    &ramEnabled
+
+    &activateRAMBank
+    ( wst: bankToActivate )
+    ;loadedRAMBank LDA NEQk ,&loadBank JCN
+      POP2 JMP2r ( bank already loaded, do nothing )
+    &loadBank
+
+    ( TODO: I think pokeblue gets an invalid bank value here somewhere, giving a + symbol in the file )
+
+    ( write current SRAM contents to previously loaded bank file )
+    #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/write DEO2 ( write out to bank file )
+
+    ( load new bank contents from file into SRAM )
+    DUP #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/read DEO2 ( read from bank file )
+    #0000 .File1/name DEO2 ( close file )
+
+    ;loadedRAMBank STA ( store the bank for which we've loaded data )
+
+    JMP2r
+  
+  &notRAMBank
+
+  ( TODO: Catch writes to SRAM (a000-bfff), and block if RAM isn't enabled? )
+  ( DUP2 #f000 AND2 #a000 NEQ2 ,&notSRAMWrite JCN
+    ROTk #00 EQU ,&zero JCN DBG &zero POP2
+  &notSRAMWrite )
+
+  ( Banking mode select (6000-7fff) )
+
+  STA
+JMP2r
+
+@MBC2Handler
+  STA
+JMP2r
+
+@MMM01Handler
+  STA
+JMP2r
+
+@MBC3Handler
+  ( ROM bank number (2000-3fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #2000 NEQ2 ,&notROMBank JCN
+    POP2 ( discard addr )
+    DUP #00 NEQ ,&notBank0 JCN INC &notBank0 ( 0 -> bank 1 )
+    INC ( increment counter target )
+
+    ( since we can't seek, we read 16KB at a time into the ROM1
+      region until we've read the target bank )
+    ( TODO: Test unpacking banked ROMs into multiple files for faster bank swaps,
+      similar to SRAM. )
+    ;filepath .File0/name DEO2
+    #00 ( bank counter )
+    &ROMbankLoop
+      ;romx .File0/read DEO2 ( trigger the read to ROM1 )
+      INC GTHk ,&ROMbankLoop JCN
+    POP2
+    #0000 .File0/name DEO2 ( close file )
+    JMP2r
+  &notROMBank
+
+  ( RAM enable (0000-1fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #0000 NEQ2 ,&notRAMEnable JCN
+    POP2 ( discard addr )
+    #0f AND #0a EQU ,&enableRAM JCN
+      ( disable RAM )
+      #00 ;MBCRegs/RAMEnable STA
+      JMP2r
+
+    &enableRAM
+      #01 ;MBCRegs/RAMEnable STA ( enable RAM )
+      ;MBCRegs/RAMBank LDA ,&activateRAMBank JMP ( ensure the current RAM bank's data is loaded )
+  &notRAMEnable
+
+  ( RAM bank number (4000-5fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #4000 NEQ2 ,&notRAMBank JCN
+    POP2 ( discard addr )
+
+    ( check for RTC register select )
+    DUP #07 GTH ,&RTCSelect JCN
+
+    DUP ;MBCRegs/RAMBank STA ( write new bank number )
+    ;MBCRegs/RAMEnable LDA ,&ramEnabled JCN
+      POP JMP2r ( RAM not active, don't load the data )
+    &ramEnabled
+
+    &activateRAMBank
+    ( wst: bankToActivate )
+    ;loadedRAMBank LDA NEQk ,&loadBank JCN
+      POP2 JMP2r ( bank already loaded, do nothing )
+    &loadBank
+
+    ( write current SRAM contents to previously loaded bank file )
+    #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/write DEO2 ( write out to bank file )
+
+    ( load new bank contents from file into SRAM )
+    DUP #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/read DEO2 ( read from bank file )
+    #0000 .File1/name DEO2 ( close file )
+
+    ;loadedRAMBank STA ( store the bank for which we've loaded data )
+
+    JMP2r
+
+    &RTCSelect
+    ( TODO: Handle RTC somehow? )
+    JMP2r
+  
+  &notRAMBank
+
+  ( TODO: Catch writes to SRAM (a000-bfff), and block if RAM isn't enabled? )
+  ( DUP2 #f000 AND2 #a000 NEQ2 ,&notSRAMWrite JCN
+    ROTk #00 EQU ,&zero JCN DBG &zero POP2
+  &notSRAMWrite )
+
+  ( Banking mode select (6000-7fff) )
+
+  STA
+JMP2r
+
+@MBC5Handler
+  ( Note: This handler is essentially the same as the MBC1 handler except 
+    that it doesn't re-direct ROM banks of 0 to 1. Due to how we copy the
+    handlers into echo RAM, code isn't reused between the two )
+
+  ( ROM bank number (2000-3fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #2000 NEQ2 ,&notROMBank JCN
+    POP2 ( discard addr )
+    INC ( increment counter target )
+
+    ( since we can't seek, we read 16KB at a time into the ROM1
+      region until we've read the target bank )
+    ( TODO: Test unpacking banked ROMs into multiple files for faster bank swaps,
+      similar to SRAM. )
+    ;filepath .File0/name DEO2
+    #00 ( bank counter )
+    &ROMbankLoop
+      ;romx .File0/read DEO2 ( trigger the read to ROM1 )
+      INC GTHk ,&ROMbankLoop JCN
+    POP2
+    #0000 .File0/name DEO2 ( close file )
+    JMP2r
+  &notROMBank
+
+  ( RAM enable (0000-1fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #0000 NEQ2 ,&notRAMEnable JCN
+    POP2 ( discard addr )
+    #0f AND #0a EQU ,&enableRAM JCN
+      ( disable RAM )
+      #00 ;MBCRegs/RAMEnable STA
+      JMP2r
+
+    &enableRAM
+      #01 ;MBCRegs/RAMEnable STA ( enable RAM )
+      ;MBCRegs/RAMBank LDA ,&activateRAMBank JMP ( ensure the current RAM bank's data is loaded )
+  &notRAMEnable
+
+  ( RAM bank number (4000-5fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #4000 NEQ2 ,&notRAMBank JCN
+    POP2 ( discard addr )
+
+    DUP ;MBCRegs/RAMBank STA ( write new bank number )
+    ;MBCRegs/RAMEnable LDA ,&ramEnabled JCN
+      POP JMP2r ( RAM not active, don't load the data )
+    &ramEnabled
+
+    &activateRAMBank
+    ( wst: bankToActivate )
+    ;loadedRAMBank LDA NEQk ,&loadBank JCN
+      POP2 JMP2r ( bank already loaded, do nothing )
+    &loadBank
+
+    ( write current SRAM contents to previously loaded bank file )
+    #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/write DEO2 ( write out to bank file )
+
+    ( load new bank contents from file into SRAM )
+    DUP #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/read DEO2 ( read from bank file )
+    #0000 .File1/name DEO2 ( close file )
+
+    ;loadedRAMBank STA ( store the bank for which we've loaded data )
+
+    JMP2r
+  
+  &notRAMBank
+
+  ( TODO: Catch writes to SRAM (a000-bfff), and block if RAM isn't enabled? )
+  ( DUP2 #f000 AND2 #a000 NEQ2 ,&notSRAMWrite JCN
+    ROTk #00 EQU ,&zero JCN DBG &zero POP2
+  &notSRAMWrite )
+
+  ( Banking mode select (6000-7fff) )
+
+  STA
+JMP2r
+
+
+( MBC registers - shared! )
+|e000 @MBCRegs &RAMEnable $1 &RAMBank $1 &ROMBank $1 &ROMBankHigh $1 
+
+( *** varaboy code *** )
+( We jump from the uxn entry point $0100 to echo RAM, and operate the emulator from 
+  entirely within echo RAM. This allows the Game Boy addresses to remain unmodified, I hope! )
+|e008 ( ends at fdff, 1dff[7679] bytes )
+@varaboy
+  
+  ;filepath .File0/name DEO2
+	#8000 .File0/length DEO2 ( read first 32KB directly to memory )
+	;rom0 .File0/read DEO2
+	( .File0/success DEI2 )
+  #0000 .File0/name DEO2 ( close file to reset addr )
+
+  #4000 .File0/length DEO2 ( setup for 8KB per ROM bank reads during runtime )
+
+  ( Setup UXN Screen vector for release mode )
+  ( Note: We execute up to the end of LY 143 for every frame vector. This should
+    allow uxnemu to operate and also lock us to multiples of 60Hz. )
+  INIT ( macro to swap modes for debug )
+BRK
+
+@on-button ( -- )
+
+  ( keyboard controls )
+  .Controller/key DEI
+    [ #1b ] NEQk NIP ,&no-esc JCN
+      ( Cleanup SRAM )
+      ( Note: Not currently MBC-specific! )
+      ;SRAMBanks LDA DUP #00 EQU ,&noSRAM JCN
+        ;savepath .File1/name DEO2 ( open SAV file )
+
+        ;isSingleRAMBank LDA ,&saveSingleBank JCN
+          ( write current bank to its bank file )
+          ;MBCRegs/RAMBank LDA ( get current bank number )
+          #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+          ;bankPathDigit STA ( replace bank character in bankPath )
+          ;bankPath .File0/name DEO2 ( set name for bank file )
+          ;sram .File0/write DEO2 ( write out to bank file )
+          #0000 .File0/name DEO2 ( close bank file )
+
+          ( repack multiple SRAM bank files )
+          #2000 .File0/length DEO2 ( set length for reads from bank files )
+          #00 ( counter )
+          DBG
+          &packLoop
+            DUP #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+            ;bankPathDigit STA ( replace bank character in bankPath )
+            ;bankPath .File0/name DEO2 ( set name for bank file )
+            ;sram .File0/read DEO2k POP .File1/write DEO2 ( read from bank file to memory, write out to SAV file )
+            #00 .File0/delete DEO ( delete bank file )
+          INC GTHk ,&packLoop JCN
+          POP
+          ,&doneSRAMHandling JMP
+        &saveSingleBank
+          ;sram .File1/write DEO2 ( write out to bank file )
+          #0000 .File1/name DEO2 ( close bank file )          
+        &doneSRAMHandling
+      &noSRAM
+      POP
+      HALT
+      ( doesn't halt in uxn32 immediately? )
+    &no-esc
+    DUP #2f GTH OVR #3a LTH #0101 NEQ2 ,&no-num JCN ;set-frameskip JSR2 &no-num
+  POP
+
+  ( update in-memory GB format joypad byte )
+  ( Note: GB can only access one nibble at a time. Based on the value )
+  (  written to io/rP1 bits 4/5 we copy the appropriate nibble into   )
+  (  the low nibble of io/rP1. We also don't mimic bounce. )
+
+  ( 7654 3210   Varvara  Game Boy )
+  ( |||| |||+ - A        A        )
+  ( |||| ||+- - B        B        )
+  ( |||| |+-- - Select   Select   )
+  ( |||| +--- - Start    Start    )
+  ( |||+ ---- - Up       Right    )
+  ( ||+- ---- - Down     Left     )
+  ( |+-- ---- - Left     Up       )
+  ( +--- ---- - Right    Down     )
+
+  .Controller/button DEI
+
+  ( change high nibble from UDLR to RLUD )
+  STHk ( copy to rst )
+  #30 AND #20 SFT ( isolate UD, shift )
+  STHkr #40 AND #01 SFT ( isolate L, shift )
+  STHkr #80 AND #03 SFT ( isolate R, shift )
+  ORA ORA ( collapse into single byte )
+  STHr #0f AND ( recover action buttons only )
+  ORA ( combine action + dpad buttons )
+
+  #ff EOR ( flip bits, as GB uses 0=pressed )
+  ;joypad STA
+
+BRK
+
+@set-frameskip
+  #2f SUB ( subtract 1 less than required for ASCII since frameskip value has +1 offset )
+  ;frameSkip STA
+JMP2r
+
+@on-frame ( -- )
+  ( begin CPU instruction execution )
+  &loop
+    ( check if halt should be ended )
+    ;io/rIF LDA ;rIE LDA AND
+      STHk #00 EQU ,&skipInterrupts JCN
+      #00 ;halt STA ( end halt blindly )
+    ;IME LDA #00 EQU ,&skipInterrupts JCN ( check if interrupts should be serviced )
+      ( service any interrupts which have occurred, in priority order )
+      STHr ( recover pending interrupt bits )
+      LITr 00 ( interrupt counter on rst )
+      &irqLoop
+        #00 ( byte to shift flags into )
+        #01 SFT2 ,&serviceIRQ JCN ( shift next interrupt bit into lower byte, check if active )
+        INCr ( increment interrupt counter )
+        DUP ,&irqLoop JCN ( loop as long as there are unhandled bits )
+        POP ( cleanup wst )
+        ,&irqServiceDone JMP
+        &serviceIRQ
+          ( clear IF bit )
+          ;io/rIF LDAk
+            #01 ( base mask bit )
+            STHkr #40 SFT SFT ( get interrupt counter, shift mask bit )
+            EOR ( clear appropriate IF flag )
+            ROT ROT STA ( store new rIF value )
+          #00 ;IME STA ( clear IME )
+          ;cycles LDA2k #0008 ADD2 SWP2 STA2 ( cycles += 8 )
+          ;PC LDA2 SWP ;pushShort JSR2 ( push PC )
+          #00 STHkr #30 SFT #40 ADD ( calculate handler address )
+          ;PC STA2 ( set PC to interrupt handler location )
+          POP ( cleanup wst )
+    &irqServiceDone
+    &skipInterrupts
+    POPr ( discard pending interrupts OR interrupt counter )
+
+    PRINTSTATE
+
+    ;halt LDA ,&do-halt JCN ,&do-instr JMP &do-halt TICK2 ;&handleCycles JMP2 ( halt )
+
+    &do-instr
+
+    ( debug break at PC )
+    ( ;PC LDA2 #02de NEQ2 ,&noBreak JCN DBG &noBreak )
+
+    READ8PC ( get opcode at PC, PC++ )
+
+      #cb NEQk NIP ;&no-Prefix JCN2
+        ( Prefix instructions )
+        POP READ8PC ( get opcode at PC, PC++ )
+        DUP #c0 AND ,&bitResSet JCN
+          ( shifts/rotates )
+          #00 OVR #02 SFT #0e AND ;shiftRotateJumpTable ADD2 LDA2 ( obtain jump table addr )
+          JSR2 ( call handler )
+          ;&doneInstr JMP2
+
+        &bitResSet
+          #00 OVR #05 SFT #06 AND ;bitResSetJumpTable ADD2 LDA2 ( obtain jump table addr )
+          JSR2 ( call handler )
+          ;&doneInstr JMP2
+      &no-Prefix
+
+      #00 OVR #10 SFT2 ;instrJumpTable ADD2 LDA2 ( obtain jump table addr )
+      JSR2 ( call handler )
+
+    &doneInstr
+    POP
+
+    &handleCycles
+
+    ;cycles LDA2 ;prevCycles LDA2 
+      SUB2k [ STH2k ] ( copy for timer handling ) ;io/rDIVlow LDA2 SWP ADD2 SWP ;io/rDIVlow STA2 ( advance 16bit rDIV, Note: using $ff03 to store low byte of rDIV )
+
+    ( Update timer and timer interrupt )
+    ( Note: We duplicate the 16bit DIV counter as timerShort, which has the shifted cycle delta added to it. Ideally we'd 
+      just reference changes to the DIV counter, but I couldn't figure out how to implement the falling edge detector without 
+      looping over each cycle change in DIV. )
+    ;io/rTAC LDA
+      DUP #04 AND #00 EQU ,&timerDisabled JCN ( check if timer is enabled )
+        #00 SWP ;TACShiftLookup ADD2 LDA ( get shift value for TAC setting )
+        STH2kr ( recover cycle delta, leave on rst to balance stacks on exit )
+        ROT SFT2 ( shift cycle delta by shift value based on TAC setting )
+        ;timerShort LDA2 ( get current timerShort value )
+        ADD2k ( add shifted delta, keep arguments to detect overflow )
+        LTH2k ,&noOverflow JCN ( check if prior value is smaller than the new value, in which case we didn't overflow )
+          ;io/rIF LDAk #04 ORA ROT ROT STA ( set Timer IF flag )
+          NIP ( discard ADD2k result high byte )
+          ;io/rTMA LDA SWP ( replace high byte with TMA value, but retain low byte )
+        &noOverflow
+        ;timerShort STA2k ( store new timerShort value )
+        POP2 ( discard timerShort addr ) POP ( discard low byte )
+        ;io/rTIMA STA ( store new TIMA value )
+        POP2 POP ( discard addition arguments, except for an extra byte to balance trailing pop )
+      &timerDisabled
+    POP2r ( discard cycle delta )
+    POP ( cleanup wst )
+
+    &cycleLoop
+      ;io/rLCDC LDA #80 AND #00 EQU ;&lcd-off JCN2 ( if LCD disabled, skip rendering )
+        ;ppuDot LDA2k INC2 SWP2 STA2k POP2 ( increment ppuDot )
+
+        ;io/rLY LDA #8f GTH ( if inside vblank.. )
+          ( or we're skipping this frame )
+          DUP ;skipThisFrame LDA ORA ,&skipScanline STR
+         ;&noModeCycle JCN2 ( don't cycle modes or render )
+          ( scanline mode advancement )
+          DUP2 #0050 NEQ2 ,&notDot80 JCN ( check if we're at dot 80 )
+            ;io/rSTAT LDAk #fc AND #03 ORA ( set STAT mode to drawing [3], explicity set to 3 to handle case when LCD recently turned on )
+            ROT ROT STA ;&noModeCycle JMP2
+          &notDot80
+          DUP2 #0106 NEQ2 ;&notDot262 JCN2 ( check if we're at dot 262 )
+            ;io/rSTAT LDAk
+            DUP #08 AND #00 EQU ,&noStatHblank JCN 
+              ;io/rIF LDAk #02 ORA ROT ROT STA ( request STAT hblank interrupt if enabled )
+            &noStatHblank
+            #fc AND ( set STAT mode to HBlank [0], length not adjusted for sprites/etc )
+            ROT ROT STA
+
+            ( perform rendering of this scanline now, since we don't want changes to LCDC/etc during hblank to affect this line )
+            LIT [ &skipScanline $1 ] ;&not-sub144 JCN2 ( if LY < 144 draw scanline )
+              ( draw scanline )
+              #00 ;io/rLY LDA .Screen/y DEO2 ( set varvara Y coordinate )
+              #0000 .Screen/x DEO2 ( set varvara X coordinate )
+              #01 .Screen/auto DEO ( set varvara auto X )
+
+              ( TODO: See if writing 8 scanlines progressively to a buffer of 2bpp tiles in UXN RAM and then using
+                two 10-tile Screen/sprite calls is faster than this per-pixel drawing. Though uxnemu seems faster
+                than uxn32 in this regard, so it might depend on the host VM. )
+
+              ( Pre-calculate and STR ahead as many values that are static for the scanline as possible, for speed )
+              #01 ;io/rLCDC LDA AND ,&isBGEnabled STR
+              #20 ;io/rLCDC LDA AND #00 EQU ( check if window is disabled in rLCDC )
+                ;io/rLY LDA ;io/rWY LDA LTH ORA ( or LY < WY )
+                ;io/rWX LDA #a6 GTH ORA ( or WX > 166 )
+                  DUP ,&isWinInactive STR ( then the window is inactive this scanline )
+                  ,&skipWinVariables JCN
+                    ;io/rWX LDA ,&wx STR ( Can't pre-calculate WX-7 because WX values of 0-6 result in negative value, breaking the LTH check )
+                    ;WLY LDAk 
+                      DUP ,&WLY STR ( yOffset = WLY )
+                    INC ROT ROT STA ( increment WLY for the next scanline only when the window is active )
+                  &skipWinVariables
+              ;io/rLY LDA ;io/rSCY LDA ADD ,&lyPlusSCY STR ( yOffset = LY + SCY )
+              #10 ;io/rLCDC LDA AND #10 EQU ,&isTileBlock0Cache STR ( are bg/win using tile block 0? )
+
+              #a000 ( setup 0-160 pixel counter )
+              &pxLoop
+                ( Is BG enabled? If not, set bgPxColor to 0 and jump to sprite handling )
+                LIT2 &isBGEnabled [ $1 _&bgEnabled ] JCN #00 ( bgPxColor = 0 ) ;&sprites JMP2
+                &bgEnabled ( applies to window as well on DMG )
+
+                ( Is window active this scanline? )
+                LIT2 [ &isWinInactive $1 _&drawBackground ] JCN
+                  DUP #07 ADD LIT [ &wx $1 ] LTHk ,&notYetWindow JCN ( Is px + 7 >= WX? )
+                    SUB ( xOffset = px - ( WX - 7 ) )
+                    DUP ,&xOffsetCache STR ( copy for later )
+                    #ff ;bgwinMaskedXOffset STA ( Invalidated xOffset cache to trigger tilemap/data fetch )
+                  LIT2 00 [ &WLY $1 ] ( yOffset = WLY )
+                    #40 ,&lcdcTilemapMask STR
+                  ,&readTilemap JMP
+                &notYetWindow
+                POP2 ( discard px, ( WX - 7 ) )
+
+                &drawBackground
+                DUP ;io/rSCX LDA ADD ( xOffset = px + SCX )
+                  DUP ,&xOffsetCache STR ( copy for later )
+                LIT2 00 [ &lyPlusSCY $1 ] ( yOffset = LY + SCY )
+                  #08 ,&lcdcTilemapMask STR
+
+                &readTilemap
+                ( wst: a0 pxCount xOffset yOffsetShort )
+
+                ( Check cached xOffset to determine if it's empty )
+                ( Note: This is SLIGHTLY faster than not caching the data, confirmed through testing. Though I'd like
+                  to find a way to further optimize it. )
+                LIT2r =bgwinMaskedXOffset LDAr ( read cached maskedXOffset )
+                DUPr LITr ff EQUr LITr _&loadNewBgWinTile JCNr ( check if we need new tile data )
+                  POP2 POP ( discard yOffset and xOffset from wst )
+                  ;bgwinTileDataHigh LDA ( read high byte onto wst )
+                  STHkr ( copy bgwinMaskedXOffset to wst )
+                  DUP #01 SUB ;bgwinMaskedXOffset STA ( decrement for next pass )
+                  LIT2r =bgwinTileDataLow LDAr ( read low byte onto rst )
+                  SWPr ( swap bgwinMaskedXOffset and low byte on rst )
+                  ;&resumeBgWinTileRender JMP2 ( jump to rendering now that we're ready )
+                &loadNewBgWinTile
+                POPr ( discard old bgwinMaskedXOffset )
+
+                LIT2 [ &isTileBlock0Cache $1 &xOffsetCache $1 ]
+                  ,&xOffset STR ( push xOffset along, TODO: remove if distance shortens enough )
+                  ,&isTileBlock0 STR ( push isTileBlock0 along, TODO: remove if distance shortens enough )
+
+                  DUP ,&yOffset STR ( copy for later )
+                  #53 SFT2 ( yOffset / * 32 )
+                ROT ( move xOffset byte to top of wst )
+                  #03 SFT ( xOffset / 8 )
+                  #00 SWP ( convert to short )
+                #0006 ( setup for $9800 )
+                  LIT [ &lcdcTilemapMask $1 ] ;io/rLCDC LDA AND ( check LCDC tilemap bit )
+                  #00 EQU ,&firstTilemap JCN INC &firstTilemap ( if tilemap bit set, increment base value )
+                #a0 SFT2 #8000 ADD2 ( calculate tilemap base address, $9800 or $9c00, from $8000 + 6|7 << 10 )
+
+                ADD2 ADD2 ( baseAddr + yOffset + xOffset = tilemap VRAM addr )
+                LDA ,&tileID STR ( read tileID from tilemap, write ahead for seeking tile data )
+
+                ( #82 ;io/rLCDC LDA NEQ ,&noBRK JCN DBG &noBRK ( break on LCDC==#82 ) )
+
+                #00 LIT [ &yOffset $1 ] #07 AND #10 SFT ( yOffset % 8 * 2 )
+
+                LIT2 00 [ &tileID $1 ] ( setup tileID as short )
+                LIT2 [ &isTileBlock0 $1 _&tileBlock0 ] JCN
+                  #ff OVR #07 SFT ,&negativeTileID JCN POP #00 &negativeTileID OVR ( sign extension )
+                  NIP2 ( discard entire original tileID -> TODO: find a way to consume it instead )
+                  #0100 ADD2 ( tileBlock1 ) 
+                &tileBlock0
+                #40 SFT2 ( * 16 )
+                #8000 ADD2 ( add tile data base addr )
+
+                ADD2 ( addr + yOffset component to get addr of bg/win tile data )
+
+                LDAk STHk ;bgwinTileDataLow STA ( get tile low byte, move to rst and cache )
+                INC2 LDA DUP ;bgwinTileDataHigh STA ( get tile high byte, copy to cache )
+
+                LIT [ &xOffset $1 ] #07 EORk AND NIP ( xOffset = ( xOffset ^ 7 ) & 7 )
+                STHk ( copy xOffset to rst )
+
+                DUP #01 SUB ;bgwinMaskedXOffset STA ( cache masked xOffset to fast-track bg/win rendering for the next pixel )
+
+                &resumeBgWinTileRender
+
+                ( px color = ( high >> xOffset ) % 2 * 2 + ( low >> xOffset ) % 2 )
+                SFT #01 AND #10 SFT ( high bit )
+                STH2r ( recover low byte and xOffset from rst )
+                SFT #01 AND ( low bit )
+                ADD ( final bg/win pixel color! )
+
+                #47 ;pxPaletteAddr STA ( default to bg/win palette )
+
+                ( Sprites! )
+                &sprites
+                #02 ;io/rLCDC LDA AND #00 EQU ;&palettes JCN2 ( check if sprites are enabled )
+
+                ( wst: ? ? ? ? #a0 px bgPxColor )
+                ( rst: )
+
+                ( calculate sprite XOR value and height for visibility calculation, write ahead )
+                #0f [ #04 ;io/rLCDC LDA AND ,&tallSprites JCN POP #07 &tallSprites ] 
+                  DUP ,&spriteYXOR STR
+                  DUP #03 SFT #ff EOR ,&tileIDMask STR ( AND mask for bit0 of tileID for 8x16 sprites )
+                  INC ,&spriteHeight STR
+                ;io/rLY LDA #10 ADD ,&lyPlus16 STR ( write LY+16 ahead )
+                OVR #08 ADD ,&pxPlus8 STR ( write px+8 ahead )
+
+                #2800 ( setup 0-40 counter, for the 40 sprite entries )
+                &spriteLoop
+                  ( wst: ? ? ? ? #a0 px bgPxColor #a0 lowAddr )
+                  ( rst: )
+
+                  #fe OVR #20 SFT ( point to OAM entry )
+                  LDAk ( read Y ) LIT [ &lyPlus16 $1 ] SWP SUB ( spriteY = LY + 16 - Y ) 
+                    DUP LIT [ &spriteHeight $1 ] LTH ,&yVisible JCN POP POP2 ;&nextSprite JMP2 ( not visible based on height )
+                    &yVisible ,&spriteY STR ( write ahead )
+                  INC ( advance to X )
+                  LDAk ( read X ) LIT [ &pxPlus8 $1 ] SWP SUB ( spriteX = px + 8 - X )
+                    DUP #08 LTH ,&xVisible JCN POP POP2 ;&nextSprite JMP2 ( not visible based on width )
+                    &xVisible ,&spriteX STR ( write ahead )
+                  INC ( advance to tileID )
+                  LDA2 STH2 ( read tileID, attr and move to rst )
+
+                  LIT [ &spriteY $1 ]
+                  ( yOffset = ( spriteY ^ 7|0 ) * 2 )
+                  LIT [ &spriteYXOR $1 ] STHkr #40 AND ,&vFlip JCN POP #00 &vFlip EOR #10 SFT ,&ySprOffset STR
+
+                  LIT [ &spriteX $1 ]
+                  ( xOffset = ( spriteX ^ 0|7 ) )
+                  #00 STHkr #20 AND ,&hFlip JCN POP #07 &hFlip EOR ,&xSprOffset STR
+
+                  ( wst: #a0 lowAddr spriteX )
+                  ( rst: tileID attr )
+
+                  LIT2 00 [ &ySprOffset $1 ]
+
+                  SWPr ( swap tileID/attr on rst )
+                  #00 STHr ( setup tileID as short )
+                  LIT [ &tileIDMask $1 ] AND ( clear bit0 for 8x16 mode )
+                  #40 SFT2 ( * 16 )
+                  #8000 ADD2 ( add tile data base addr )
+                  ADD2 ( yOffset + addr to get addr of sprite tile data )
+
+                  LDAk STH ( get tile low byte, move to rst )
+                  INC2 LDA ( get tile high byte )
+
+                  LIT [ &xSprOffset $1 ] STHk ( copy xOffset to rst )
+
+                  ( px color = ( high >> xOffset ) % 2 * 2 + ( low >> xOffset ) % 2 )
+                  SFT #01 AND #10 SFT ( high bit )
+                  STH2r ( recover low byte and xOffset from rst )
+                  SFT #01 AND ( low bit )
+                  ADD ( final sprite pixel color! )
+
+                  ( wst: px bgPxColor #a0 lowAddr sprPxColor )
+                  ( rst: attr )
+
+                  ( decide if we should show the bg/win or sprite pixel color )
+                  DUP #00 NEQ ,&sprPxOpaque JCN ( sprPx transparent, don't draw ) POP POPr ,&nextSprite JMP
+                  &sprPxOpaque
+                    STHkr ( copy attr ) #80 AND ( check sprite's BG priority bit ) #00 NEQ ,&checkBgPxColor JCN
+                      ( no BG priority, draw sprite )
+                      NIP2 NIP ( discard bgPxColor+#a0, lowaddr )
+                    &handleSprPalette
+                      #48 ( lowAddr of OBP0 )
+                      STHr ( recover attr byte )
+                      #10 AND #04 SFT ADD ( Add shifted palette bit onto lowAddr )
+                      ;pxPaletteAddr STA ( store for drawing )
+                      ,&palettes JMP ( jump to draw this sprite pixel )
+                    &checkBgPxColor
+                    ( check if BG color 1-3 )
+                    STH ( move sprPxColor to rst ) ROTk NIP NIP ( get copy of bgPxColor )
+                    #00 EQU ,&showSprPx JCN ( BG has priority and is color 1-3, skip this sprite ) POP2r ,&nextSprite JMP
+                    &showSprPx
+                      POP2 POP ( discard #a0 lowAddr, bgPxColor )
+                      STHr ( recover sprPxColor from rst )
+                      ,&handleSprPalette JMP
+
+                  &nextSprite
+                  INC GTHk ;&spriteLoop JCN2
+                POP2
+
+                ( apply palette to final pixel color )
+                &palettes
+
+                #10 SFT ( color * 2 = shift count )
+                #ff ;pxPaletteAddr LDA ( get palette addr )
+                LDA ( get palette value )
+                SWP ( swap color/shift )
+                SFT ( shift palette to get color in bit 0-1 )
+                #03 AND ( mask off extra bits )
+
+                #80 ADD ( enable 2bpp mode )
+                .Screen/pixel DEO ( draw pixel, at last! )
+
+              INC GTHk ;&pxLoop JCN2
+              POP2 ( discard pixel counter )
+            &not-sub144
+          &notDot262
+        &noModeCycle
+
+        #01c8 NEQ2 ;&not-dot456 JCN2 ( if ppuDot != 456 we're not done this scanline yet )
+
+          ;io/rLY LDA #8f GTH ,&noOAMSearch JCN
+            ( for non-vblank scanlines, advance from hblank [0] to OAM search [2] )
+            ;io/rSTAT LDAk INC INC ROT ROT STAk POP2 ( set STAT mode to OAM search [2], mode 2 always follows 0, so INC INC works )
+            #20 AND #00 EQU ,&noStatOAM JCN 
+              ;io/rIF LDAk #02 ORA ROT ROT STA ( request STAT OAM interrupt if enabled )
+            &noStatOAM
+          &noOAMSearch
+
+          ;io/rLY LDAk ( get current LY ) INC ( increment LY )
+
+          ;io/rSTAT LDA #40 AND #00 EQU ,&noStatLYC JCN 
+            DUP ;io/rLYC LDA NEQ ,&lyNEQlyc JCN
+              ;io/rIF LDAk #02 ORA ROT ROT STA ( request STAT LYC interrupt if enabled )
+          &noStatLYC
+          &lyNEQlyc
+
+          DUP #9a LTH ,&not-new-frame ( check if we're done VBlank )
+            JCN POP #00 ( reset to LY = 0 )
+            DUP ;WLY STA ( reset WLY for next frame )
+          &not-new-frame
+          ROT ROT STA ( LY = (LY + 1) % 154 )
+          #0000 ;ppuDot STA2 ( reset to start of scanline, ppuDot = 0 )
+          #ff ;bgwinMaskedXOffset STA ( reset bgwinMaskedXOffset for the next scanline )
+
+          ;io/rLY LDA #90 NEQ ,&notVblankStart JCN
+            #01 ( setup to enable VBlank IF flag up ahead )
+            ;io/rSTAT LDAk #fc AND INC ROT ROT STAk POP2 ( set STAT mode to VBlank [1] )
+            #10 AND #00 EQU ,&noStatVBLANK JCN
+              INC INC ( increment prepared IF flag addition to include STAT VBlank interrupt )
+            &noStatVBLANK
+            STH ;io/rIF LDAk STHr ORA ROT ROT STA ( set VBlank and possible STAT VBlank IF flags )
+
+            ( update frameSkip state )
+            ;frameSkipCounter LDAk #01 SUB ( decrement counter )
+            DUP #00 NEQ DUP ;skipThisFrame STA ( store skip boolean for next frame )
+            ,&skippingNext JCN
+              POP ;frameSkip LDA ( reset counter )
+            &skippingNext
+            ROT ROT STA ( store new counter )
+
+            VBLANK
+          &notVblankStart
+          &afterModeChange
+
+          ,&nextCycle JMP
+          
+      &lcd-off
+        #00 ;io/rLY STAk POP2 DUP ;ppuDot STA2 ( LY = 0, ppuDot = 0 )
+
+      &not-dot456
+      &nextCycle
+      INC2 NEQ2k ;&cycleLoop JCN2 ( Note: NEQ2k is used instead of GTH2k because cycles can overflow )
+    POP2 ;prevCycles STA2 ( set prevCycles == cycles, as we've caught up )
+    
+    ;&loop JMP2
+
+  HALT
+BRK
+
+@tick ( -- )
+  ;cycles LDA2k #0004 ADD2 SWP2 STA2
+JMP2r
+
+
+
+( *** CPU Registers - initial state post bootrom *** )
+( B C D E H L F A SPhigh SPlow - UXN is big endian, so no benefit to inverting pairs )
+( Note: We have to swap high/low read from ROM (u6) though... so maybe inversion has uses? )
+( Note: This order is important as it matches the r8 table order, except for F which is the [hl] location. SP doesn't have to be a part of the table. )
+( Note: inc/dec r16 would benefit from SP in the FA slot, but it's easy enough to special case that table seek )
+( Note: push/pop r16 would benefit from AF ordering instead of FA, but then the [hl] case would have to be handled differently... )
+@reg8 [ &B 00 &C 13 &D 00 &E d8 &H 01 &L 4d &F b0 &A 01 &SPhigh ff &SPlow fe ]
+@PC [ &high 01 &low 00 ]
+
+( varaboy variables )
+@cycles $2
+@prevCycles $2
+@halt $1
+@IME $1
+@ppuDot &high $1 &low $1
+@joypad $1
+@pxPaletteAddr $1
+@WLY $1 ( track LY of window independent of LY )
+@frameSkip $1
+@frameSkipCounter $1
+@skipThisFrame $1
+@timerShort $1 @timerShortLow $1
+@SRAMBanks $1 ( number of SRAM banks in use )
+@isSingleRAMBank $1 ( flag indicating if a single RAM bank is in use )
+@loadedRAMBank $1 ( RAM bank currently loaded from disk into memory at $A000 )
+
+( PPU cache to reuse data )
+@bgwinMaskedXOffset $1
+@bgwinTileDataLow $1
+@bgwinTileDataHigh $1
+
+@filepath $40
+@default-gb "cpu_instrs.gb $1
+@savepath $40
+@saveExtension "sav $1
+@bankPath "_bank @bankPathDigit "A.sav $1
+
+( *** SM83 Instruction Jump Table *** )
+@instrJumpTable
+=do-NOP      =do-LDr16u16 =do-LDr16A  =do-INCr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-RLCA
+=do-LDu16SP  =do-ADDHLr16 =do-LDAr16  =do-DECr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-RRCA
+=do-STOP     =do-LDr16u16 =do-LDr16A  =do-INCr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-RLA
+=do-JR       =do-ADDHLr16 =do-LDAr16  =do-DECr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-RRA
+        
+=do-JRc      =do-LDr16u16 =do-LDr16A  =do-INCr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-DAA
+=do-JRc      =do-ADDHLr16 =do-LDAr16  =do-DECr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-CPL
+=do-JRc      =do-LDr16u16 =do-LDr16A  =do-INCr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-SCF
+=do-JRc      =do-ADDHLr16 =do-LDAr16  =do-DECr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-CCF
+  
+( TODO: Is it worth not using a table for these almost 64 instructions? )  
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
+     
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-HALT   =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
+  
+=do-ADDr8    =do-ADDr8    =do-ADDr8   =do-ADDr8   =do-ADDr8    =do-ADDr8   =do-ADDr8   =do-ADDr8
+=do-ADCr8    =do-ADCr8    =do-ADCr8   =do-ADCr8   =do-ADCr8    =do-ADCr8   =do-ADCr8   =do-ADCr8
+=do-SUBr8    =do-SUBr8    =do-SUBr8   =do-SUBr8   =do-SUBr8    =do-SUBr8   =do-SUBr8   =do-SUBr8
+=do-SBCr8    =do-SBCr8    =do-SBCr8   =do-SBCr8   =do-SBCr8    =do-SBCr8   =do-SBCr8   =do-SBCr8
+  
+=do-ANDr8    =do-ANDr8    =do-ANDr8   =do-ANDr8   =do-ANDr8    =do-ANDr8   =do-ANDr8   =do-ANDr8
+=do-XORr8    =do-XORr8    =do-XORr8   =do-XORr8   =do-XORr8    =do-XORr8   =do-XORr8   =do-XORr8
+=do-ORr8     =do-ORr8     =do-ORr8    =do-ORr8    =do-ORr8     =do-ORr8    =do-ORr8    =do-ORr8
+=do-CPr8     =do-CPr8     =do-CPr8    =do-CPr8    =do-CPr8     =do-CPr8    =do-CPr8    =do-CPr8
+ 
+=do-RETc     =do-POPr16   =do-JPcu16  =do-JPu16   =do-CALLcu16 =do-PUSHr16 =do-ADDu8   =do-RST
+=do-RETc     =do-RET      =do-JPcu16  =do-INVALID =do-CALLcu16 =do-CALLu16 =do-ADCu8   =do-RST
+=do-RETc     =do-POPr16   =do-JPcu16  =do-INVALID =do-CALLcu16 =do-PUSHr16 =do-SUBu8   =do-RST
+=do-RETc     =do-RETI     =do-JPcu16  =do-INVALID =do-CALLcu16 =do-INVALID =do-SBCu8   =do-RST
+ 
+=do-LDHu8A   =do-POPr16   =do-LDHCA   =do-INVALID =do-INVALID  =do-PUSHr16 =do-ANDu8   =do-RST
+=do-ADDSPi8  =do-JPHL     =do-LDu16A  =do-INVALID =do-INVALID  =do-INVALID =do-XORu8   =do-RST
+=do-LDHAu8   =do-POPr16   =do-LDHAC   =do-DI      =do-INVALID  =do-PUSHr16 =do-ORu8    =do-RST
+=do-LDHLSPi8 =do-LDSPHL   =do-LDAu16  =do-EI      =do-INVALID  =do-INVALID =do-CPu8    =do-RST
+
+@bitResSetJumpTable
+=do-INVALID  =do-BIT      =do-RES      =do-SET
+
+@shiftRotateJumpTable
+=do-RLC      =do-RRC      =do-RL       =do-RR     =do-SLA      =do-SRA     =do-SWAP    =do-SRL
+
+( *** SM83 Utility Tables *** )
+@flag-mask [ 80 80 10 10 ] ( NZ Z NC C )
+@flag-equals [ 00 80 00 10 ]
+
+@TACShiftLookup [ $4 ( pad front of table to 'ignore' timer enable bit, to speed up table seek ) ]
+                [ 02 40 20 00 ]
+
+( *** SM83 Utility Functions *** )
+
+@pushShort ( low high -- )
+  ;reg8/SPhigh STH2k LDA2 ( read stack pointer )
+  #0001 SUB2 ( decrement SP )
+  STAk ( write high byte )
+  #0001 SUB2 ( decrement SP )
+  ROT POP ( discard high byte )
+  STAk ( write low byte )
+  STH2r STA2 ( store new SP )
+  POP ( discard low byte )
+  TICK2 ( extra ticks for 2 writes )
+JMP2r
+
+@check-flag ( condition -- flag-equal )
+  ( TODO: There HAS to be a faster way to check if one of two bits is set or not... find it! )
+  STH2k ( duplicate offset on rst )
+  ;flag-mask ADD2 LDA ( get flag mask for our flag )
+  ;reg8/F LDA ( get current flags )
+  AND ( and flag and mask byte )
+  STH2r ( recover flag offset )
+  ;flag-equals ADD2 LDA ( get flag equals byte )
+  EQU ( compare masked flag byte to flag equals byte )
+JMP2r
+
+( *** SM83 Instruction Implementations *** )
+
+@do-JPcu16 ( instr -- instr )
+  DUP #18 AND #03 SFT #00 SWP ( setup flag offset on wst )
+  ,check-flag JSR
+  ,&flag-match JCN READ16PC ( advance PC past u16 ) POP2 ( discard u16 ) JMP2r &flag-match
+  ( fall through to do-JPu16 )
+
+@do-JPu16 ( instr -- instr )
+  READ16PC
+  ;PC STA2
+  TICK ( extra tick )
+JMP2r
+
+@do-JRc ( instr -- instr )
+  DUP #18 AND #03 SFT #00 SWP ( setup flag offset on wst )
+  ,check-flag JSR
+  ,&flag-match JCN READ8PC ( advance PC past u8 ) POP ( discard u8 ) JMP2r &flag-match
+  ( fall through to JR )
+
+@do-JR ( instr -- instr )
+  READ8PC ( read u8 )
+  #ff OVR #07 SFT ,&negative JCN POP #00 &negative SWP ( sign extension )
+  ;PC LDA2 ( read current PC )
+  ADD2 ( add offset )
+  ;PC STA2 ( store new PC )
+  TICK ( extra tick )
+JMP2r
+
+@do-CALLcu16 ( instr -- instr )
+  DUP #18 AND #03 SFT #00 SWP ( setup flag offset on wst )
+  ;check-flag JSR2
+  ,&flag-match JCN READ16PC ( advance PC past u16 ) POP2 ( discard u16 ) JMP2r &flag-match
+  ( fall through to do-CALLu16 )
+
+@do-CALLu16 ( instr -- instr )
+  READ16PC
+  ;PC LDA2 SWP
+  ;pushShort JSR2
+  ;PC STA2
+  TICK ( extra tick )
+JMP2r
+
+@do-JPHL ( instr -- instr )
+  ;reg8/H LDA2
+  ;PC STA2
+JMP2r
+
+@do-RST ( instr -- instr )
+  ;PC LDA2 SWP
+  ;pushShort JSR2
+  DUP #38 AND #00 SWP
+  ;PC STA2
+  TICK ( extra tick )
+JMP2r
+
+@do-RETc ( instr -- instr )
+  DUP #18 AND #03 SFT #00 SWP ( setup flag offset on wst )
+  ;check-flag JSR2
+  TICK ( extra tick )
+  ,&flag-match JCN JMP2r &flag-match
+  ( fall through to RET )
+
+@do-RET ( instr -- instr )
+  POPSHORT
+  ;PC STA2
+  TICK ( extra tick )
+JMP2r
+
+@do-RETI ( instr -- instr )
+  POPSHORT
+  ;PC STA2
+  TICK
+  ;do-EI JMP2
+
+@do-LDr16u16 ( instr -- instr )
+  GET-R16-GROUP1-ADDR STH2
+  [ ;PC LDA2k INC2k INC2 ROT2 STA2 ] LDA2 ( read u16 )
+  SWP ( swap high/low bytes from ROM for storage in r16 )
+  STH2r STA2 ( store in r16 )
+  TICK2
+JMP2r
+
+@do-ADDHLr16 ( instr -- instr )
+  GET-R16-GROUP1-ADDR
+  LDA2 ( read r16 value )
+  ;reg8/H LDA2 ( get HL value )
+  ADD2k
+  DUP2 ;reg8/H STA2 ( store new value )
+
+  GTH2k STH ( if sum is less than the HL arg, we carried, stash to rst )
+  POP2 ( pop off sum )
+
+  #0fff AND2 ( get lower 12 bits of r16 )
+  OVR2 #0fff AND2 ( get lower 12 bits of HL )
+  ADD2 #0fff GTH2 STH ( stash H to rst )
+  POP2 ( pop off r16 value )
+
+  ;reg8/F LDAk
+  #80 AND ( retain z )
+  STHr #50 SFT ORA ( h )
+  STHr #40 SFT ORA ( c )
+  ROT ROT STA ( - 0 h c )
+
+  TICK ( extra tick )
+JMP2r
+
+@do-LDr8u8 ( instr -- instr )
+  DUP #38 AND #03 SFT GET-R8-ADDR STH2 ( stash target addr )
+  READ8PC ( read u8 )
+  STH2r ;write8 JSR2 ( recover target addr and write value )
+JMP2r
+
+@do-LDr8r8 ( instr -- instr )
+  DUP #38 AND #03 SFT GET-R8-ADDR STH2 ( stash target addr )
+  DUP #07 AND GET-R8-ADDR_2
+  LDA ( read source r8 )
+  STH2r ;write8 JSR2 ( recover target addr and write value )
+JMP2r
+
+@do-LDSPHL ( instr -- instr )
+  ;reg8/H LDA2
+  ;reg8/SPhigh STA2
+  TICK ( extra tick )
+JMP2r
+
+@do-LDu16A ( instr -- instr )
+  ;reg8/A LDA ( read A )
+  READ16PC ( read u16 )
+  ;write8 JSR2 ( store in RAM )
+  TICK ( extra tick )
+JMP2r
+
+@do-LDAu16 ( instr -- instr )
+  READ16PC ( read u16 )
+  LDA ( read from RAM )
+  ;reg8/A STA ( store in A )
+  TICK ( extra tick )
+JMP2r
+
+@do-LDHu8A ( instr -- instr )
+  ;reg8/A LDA ( read A )
+  #ff READ8PC ( $FF00 + read u8 )
+  ;write8 JSR2 ( store in HRAM )
+  TICK ( extra tick )
+JMP2r
+
+@do-LDHAu8 ( instr -- instr )
+  #ff READ8PC ( $FF00 + read u8 )
+  LDA ( read from HRAM )
+  ;reg8/A STA ( store in A )
+  TICK ( extra tick )
+JMP2r
+
+@do-LDHCA ( instr -- instr )
+  ;reg8/A LDA ( read A )
+  #ff ;reg8/C LDA ( $FF00 + read C )
+  ;write8 JSR2 ( store in HRAM )
+  TICK ( extra tick )
+JMP2r
+
+@do-LDHAC ( instr -- instr )
+  #ff ;reg8/C LDA ( $FF00 + read C )
+  LDA ( read from HRAM )
+  ;reg8/A STA ( store in A )
+  TICK ( extra tick )
+JMP2r
+
+
+@do-LDAr16 ( instr -- instr )
+  ( Note: The [r16] source options are: [bc], [de], [hli], [hld] )
+  DUP #30 AND #03 SFT STHk
+    [ DUP #06 NEQ ,&notHLD JCN POP #04 &notHLD ] ( change HLD case to use HL as r16, change %11 to %10 )
+    #00 SWP ;reg8 ADD2 ( get addr of source r16 from instruction )
+  LDA2 ( read address stored in r16 )
+
+  LDA ( read value from [r16] )
+  ;reg8/A STA ( store in A )
+
+  &hlihld
+  TICK ( extra tick )
+
+  ( check for hli/hld )
+  STHr ( recover r16 argument )
+  DUP #04 EQU ,&hli JCN
+      #06 EQU ,&hld JCN
+  JMP2r
+  &hli POP ;reg8/H LDA2k INC2 SWP2 STA2 JMP2r
+  &hld ;reg8/H LDA2k #0001 SUB2 SWP2 STA2 JMP2r
+
+@do-LDr16A ( instr -- instr )
+  ( Note: The [r16] source options are: [bc], [de], [hli], [hld] )
+
+  DUP #30 AND #03 SFT STHk
+    [ DUP #06 NEQ ,&notHLD JCN POP #04 &notHLD ] ( change HLD case to use HL as r16, change %11 to %10 )
+    #00 SWP ;reg8 ADD2 ( get addr of source r16 from instruction )
+  LDA2 ( read address stored in r16 )
+  
+  ;reg8/A LDA ( read A )
+  ROT ROT ( swap value/addr )
+  ;write8 JSR2 ( store in [r16] )
+
+  ,do-LDAr16/hlihld JMP
+
+@do-LDu16SP ( instr -- instr )
+  ;reg8/SPhigh LDA2 ( read SP )
+  READ16PC ( read u16 )
+  STH2k ( copy destination to rst )
+  ;write8 JSR2 ( write low byte )
+  STH2r INC2 ( recover desintation, increment )
+  ;write8 JSR2 ( write high byte )
+  TICK2 ( extra ticks )
+JMP2r
+
+@do-ADDSPi8 ( instr -- instr )
+  ( Note: Test 03 is useful for verifying this )
+  READ8PC ( read u8 )
+  #ff OVR #07 SFT ,&negative JCN POP #00 &negative SWP ( sign extension )
+  ;reg8/SPhigh LDA2 ( read current SP )
+  ADD2k ( SP + i8 )
+  ;reg8/SPhigh STA2 ( store new SP )
+
+  TICK ( extra tick )
+
+  &complete
+  #00ff AND2 ( get lower byte of SP )
+  OVR2 #00ff AND2 ( get lower byte of i8 )
+  ADD2k #00ff GTH2 STH ( stash C to rst )
+  NIP ( remove high byte of i8 )
+  #0f AND ( get lower nibble of i8 )
+  OVR #0f AND ( get lower nibble of SP )
+  ADD #0f GTH STH ( stash H to rst )
+
+  POP2 POP2 ( cleanup stack, TODO: Can we consume these earlier? )
+
+  STHr #50 SFT ( h )
+  STHr #40 SFT ORA ( c )
+  ;reg8/F STA ( 0 0 h c mask )
+
+  TICK ( extra tick )
+JMP2r
+
+@do-LDHLSPi8 ( instr -- instr )
+  ;reg8/SPhigh LDA2 ( read SP )
+  READ8PC ( read i8 )
+  #ff OVR #07 SFT ,&negative JCN POP #00 &negative SWP ( sign extension )
+  ADD2k ( SP + i8 )
+  ;reg8/H STA2 ( store result in HL )
+
+  ,do-ADDSPi8/complete JMP
+
+@do-INCr8 ( instr -- instr )
+  DUP #38 AND #03 SFT GETSET-R8-ADDR
+  LDAk [ STHk ] INC STHk ROT ROT
+  ;write8 JSR2
+
+  ;reg8/F LDAk ( load old flags )
+  #10 AND ( retain old carry flag )
+  STHr ( recover new register value )
+  #00 EQU #70 SFT ORA ( z flag )
+  STHr #0f AND #0f EQU ( recover pre-inc lower nibble, set h if it was 15 )
+  #50 SFT ORA ( h flag )
+  ROT ROT STA ( z 0 h - )
+JMP2r
+
+@do-DECr8 ( instr -- instr )
+  DUP #38 AND #03 SFT GETSET-R8-ADDR
+  LDAk [ STHk ] #01 SUB STHk ROT ROT ;write8 JSR2
+
+  ;reg8/F LDAk
+  #10 AND ( retain c )
+  STHr ( recover new value )
+  #00 EQU #70 SFT ORA ( z )
+  #40 ORA ( n )
+  STHr #0f AND #00 EQU #50 SFT ( recover pre-inc lower nibble, set h if it was 0 )
+  ORA ( h )
+  ROT ROT STA ( z 1 h - )
+JMP2r
+
+@do-INCr16 ( instr -- instr )
+  GET-R16-GROUP1-ADDR
+  LDA2k INC2 SWP2 STA2 ( read value, increment, store )
+  TICK ( extra tick )
+JMP2r
+
+@do-DECr16 ( instr -- instr )
+  GET-R16-GROUP1-ADDR
+  LDA2k #0001 SUB2 SWP2 STA2 ( read value, decrement, store )
+  TICK ( extra tick )
+JMP2r
+
+@do-PUSHr16 ( instr -- instr )
+  DUP #30 AND #03 SFT STHk ( stash to rst )
+  #00 SWP
+  ;reg8 ADD2 ( add base and offset to get addr )
+  LDA2 ( read register pair value )
+
+  STHr ( recover r16 bit pair )
+  #06 EQU ,&AF JCN [ SWP ] &AF ( swap high/low bytes, except for AF )
+
+  ;pushShort JSR2
+
+  TICK ( extra tick )
+JMP2r
+
+@do-POPr16 ( instr -- instr )
+  DUP #30 AND #03 SFT STHk ( stash to rst )
+  #00 SWP
+  ;reg8 ADD2 ( add base and offset to get addr )
+
+  POPSHORT
+
+  STHr ( recover r16 bits )
+  #06 NEQ ,&notAF JCN [ SWP ] #f0ff AND2 &notAF ( swap high/low bytes back for AF, and mask low nibble of F )
+
+  SWP2 ( swap r16 addr and short )
+  STA2 ( write popped value to r16 )
+JMP2r
+
+@do-DI ( instr -- instr )
+  #00 ;IME STA
+JMP2r
+
+@do-EI ( instr -- instr )
+  #1f ;IME STA ( Note: Enabled with 1f to allow easy ANDing together with IF/IE flags )
+JMP2r
+
+@do-STOP
+  ,do-STOP JMP
+
+@do-ADDu8 ( instr -- instr )
+  READ8PC ( read u8 )
+  ,do-ADDr8/do-ADD JMP
+
+@do-ADDr8 ( instr -- instr )
+  DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
+&do-ADD
+  #00 SWP ( convert arg to short )
+  #00 ;reg8/A LDA ( read A as short )
+  ADD2k ( add as short to detect carry )
+
+  ( wst: argShort AShort resultShort )
+  DUP ;reg8/A STA ( store result in A )
+  #00 EQU #70 SFT ( z )
+  SWP #40 SFT ( c, using high byte overflow )
+  ORA STH ( stash z|c )
+  #0f AND NIP OVR #0f AND ( get lower nibble of both inputs )
+  ADD #0f GTH #50 SFT ( h )
+  STHr ORA ( recover z|c, OR with h )
+  ;reg8/F STA ( z 0 h c )
+  POP2
+
+JMP2r
+
+@do-ADCu8 ( instr -- instr )
+  READ8PC ( read u8 )
+  ,do-ADCr8/do-ADC JMP
+
+@do-ADCr8 ( instr -- instr )
+  DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
+&do-ADC
+  #00 SWP ( convert arg to short )
+  #00 ;reg8/A LDA ( read A as short )
+  LITr 00 ;reg8/F LDA #10 AND #04 SFT STH ( get current carry value as boolean, on rst )
+  ADD2k ( add arg+A, keep inputs ) STH2kr ( recover carry from rst ) ADD2 ( add carry to result )
+  
+  ( rst: oldCarryShort )
+  ( wst: argShort AShort resultShort )
+  DUP ;reg8/A STA ( store result in A )
+  #00 EQU #70 SFT ( z )
+  SWP #40 SFT ( c )
+  ORA STH ( stash z|c )
+  #0f AND NIP OVR #0f AND ( get lower nibble of both inputs )
+  ROTr ROTr STHr POPr ( get old carry from rst )
+  ADD ADD #0f GTH #50 SFT ( h )
+  STHr ORA ( recover z|c, OR with h )
+  ;reg8/F STA ( z 0 h c )
+  POP2
+
+JMP2r
+
+@do-SUBu8 ( instr -- instr )
+  READ8PC ( read u8 )
+  ,do-SUBr8/do-SUB JMP
+
+@do-SUBr8 ( instr -- instr )
+  DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
+&do-SUB
+  ;reg8/A LDA ( read A )
+  SWP ( swap r8/u8 and A for correct subtraction order )
+  SUBk
+
+  ;reg8/A STA ( store result in A )
+  LTHk #40 SFT STH ( c to rst )
+  DUP2 SWP ( duplicate/swap inputs for half carry calculation )
+  #0f AND OVR #0f AND ( get lower nibble of both inputs )
+  SUB #10 GTH #50 SFT STH POP ( h to rst )
+  ORAr ( c|h )
+  EQU #70 SFT ( z )
+  #40 ( n )
+  STHr ORA ORA
+  ;reg8/F STA ( z 1 h c )
+JMP2r
+
+@do-SBCu8 ( instr -- instr )
+  READ8PC ( read u8 )
+  ,do-SBCr8/do-SBC JMP
+
+@do-SBCr8 ( instr -- instr )
+  DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
+&do-SBC
+  #00 SWP ( convert arg to short )
+  #00 ;reg8/A LDA ( read A as short )
+  SWP2 ( swap r8/u8 and A for correct subtraction order )
+  LITr 00 ;reg8/F LDA #10 AND #04 SFT STH ( get current carry value as boolean, on rst )
+  SUB2k ( A-arg, keep inputs ) STH2kr ( get carry from rst ) SUB2 ( subtract carry )
+
+  ( rst: oldCarryShort )
+  ( wst: argShort AShort resultShort )
+  DUP ;reg8/A STA ( store result in A )
+  #00 EQU #70 SFT ( z )
+  SWP #00 NEQ #40 SFT ( c )
+  ORA STH ( stash z|c )
+  #0f AND NIP OVR #0f AND ( get lower nibble of both inputs )
+  SWP SUB ( swap from arg/A to A/arg for correct sub order )
+  ROTr ROTr STHr POPr ( get old carry from rst )
+  SUB #0f GTH #50 SFT ( h )
+  STHr ORA ( z|c|h )
+  #40 ( n )
+  ORA
+  ;reg8/F STA ( z 1 h c )
+  POP2
+JMP2r
+
+@do-CPu8 ( instr -- instr )
+  READ8PC ( read u8 )
+  ,do-CPr8/do-CP JMP
+
+@do-CPr8 ( instr -- instr )
+  DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
+&do-CP
+  ;reg8/A LDA ( read A )
+  SWP ( swap r8/u8 and A for correct 'subtraction' order )
+
+  LTHk #40 SFT STH ( c to rst )
+  DUP2 SWP ( duplicate/swap inputs for half carry calculation )
+  #0f AND OVR #0f AND ( get lower nibble of both inputs )
+  SUB #10 GTH #50 SFT STH POP ( h to rst )
+  ORAr ( c|h )
+  EQU #70 SFT ( z )
+  #40 ( n )
+  STHr ORA ORA
+  ;reg8/F STA ( z 1 h c )
+JMP2r
+
+@do-ANDu8 ( instr -- instr )
+  READ8PC ( read u8 )
+  ,do-ANDr8/do-AND JMP
+
+@do-ANDr8 ( instr -- instr )
+  DUP #07 AND GET-R8-ADDR LDA
+&do-AND
+  ;reg8/A LDA ( read A )
+  AND
+
+  DUP ;reg8/A STA ( store A )
+  #00 EQU #70 SFT ( z )
+  #20 ORA ( h )
+  ;reg8/F STA ( z 0 1 0 )
+JMP2r
+
+@do-XORu8 ( instr -- instr )
+  READ8PC ( read u8 )
+  ,do-XORr8/do-XOR JMP
+
+@do-XORr8 ( instr -- instr )
+  DUP #07 AND GET-R8-ADDR LDA
+&do-XOR
+  ;reg8/A LDA ( read A )
+  EOR
+&cleanup
+  DUP ;reg8/A STA ( store A )
+  #00 EQU #70 SFT ( z )
+  ;reg8/F STA ( z 0 0 0 )
+JMP2r
+
+@do-ORu8 ( instr -- instr )
+  READ8PC ( read u8 )
+  ,do-ORr8/do-OR JMP
+
+@do-ORr8 ( instr -- instr )
+  DUP #07 AND GET-R8-ADDR LDA
+&do-OR
+  ;reg8/A LDA ( read A )
+  ORA
+  ,do-XORr8/cleanup JMP
+
+@do-RRA ( instr -- instr )
+  ;reg8/A LDAk ( read A value )
+  #00 ( push empty low byte )
+  #01 SFT2 ( shift into low byte )
+  STH ( move low byte to rst )
+  ;reg8/F LDA #10 AND #30 SFT ( get carry flag in bit 7 )
+  ORA ( OR carry flag into bit 7 )
+  ROT ROT STA ( store new value in A )
+
+  STHr #03 SFT ( recover low byte from rst, c )
+  ;reg8/F STA ( 0 0 0 c )
+JMP2r
+
+@do-RRCA ( instr -- instr )
+  ;reg8/A LDAk ( read A value )
+  #00 ( push empty low byte )
+  #01 SFT2 ( shift into low byte )
+  STHk ( copy low byte to rst )
+  ORA ( OR shifted out bit 0 onto bit 7 )
+  ROT ROT STA ( store new value in A )
+
+  STHr #03 SFT ( recover low byte from rst, c )
+  ;reg8/F STA ( 0 0 0 c )
+JMP2r
+
+@do-RLCA ( instr -- instr )
+  ;reg8/A LDAk ( read A value )
+  #00 SWP ( convert to short )
+  #10 SFT2 ( shift into high byte )
+  OVR STH ( copy high byte and move to rst )
+  ORA ( AND ) ( OR low/high bytes to put bit 7 into bit 0 )
+  ROT ROT STA ( store new value in A )
+
+  STHr #40 SFT ( c )
+  ;reg8/F STA ( 0 0 0 c )
+JMP2r
+
+@do-RLA ( instr -- instr )
+  ;reg8/A LDAk ( read r8 value )
+  #00 SWP ( convert to short )
+  #10 SFT2 ( shift into high byte )
+  SWP STH ( move high byte to rst )
+  ;reg8/F LDA #10 AND #04 SFT ( get carry flag in bit 0 )
+  ORA ( OR carry flag into bit 0 )
+  ROT ROT STA ( store new value in A )
+
+  STHr #40 SFT ( c )
+  ;reg8/F STA ( 0 0 0 c )
+JMP2r
+
+@do-DAA ( instr -- instr )
+  ;reg8/F LDAk ( read flags )
+  STH ( move to rst )
+  INC2 ( advance addr to A )
+  LDA ( read A )
+  DUPr LITr 40 ANDr LITr 00 NEQr LITr _&afterSubtraction JCNr ( check N )
+    ( after addition )
+    DUPr LITr 10 ANDr LITr 00 NEQr LITr _&addOutOfBounds JCNr
+    DUP #9a LTH ,&addCheckH JCN
+    &addOutOfBounds
+      #60 ADD ( A += $60 )
+      ;reg8/F LDAk #10 ORA ROT ROT STA ( set carry flag direct )
+    &addCheckH
+    DUPr LITr 20 ANDr LITr 00 NEQr LITr _&addHalfCarry JCNr
+    DUP #0f AND #0a LTH ,&cleanup JCN
+    &addHalfCarry
+      #06 ADD ( A += $06 )
+  ,&cleanup JMP
+  &afterSubtraction
+    DUPr LITr 10 ANDr LITr 00 EQUr LITr _&subCheckH JCNr
+      #60 SUB ( A -= $60 )
+    &subCheckH
+    DUPr LITr 20 ANDr LITr 00 EQUr LITr _&cleanup JCNr
+      #06 SUB ( A -= $06 )
+
+  &cleanup
+  POPr ( cleanup rst )
+
+  DUP ;reg8/A STA ( store new A )
+  #00 EQU #70 SFT STH ( z )
+  ;reg8/F LDAk
+  #50 AND ( retain n, c )
+  STHr ORA
+  ROT ROT STA ( z - 0 - , carry set earlier )
+JMP2r
+
+@do-CPL ( instr -- instr )
+  ;reg8/A LDAk ( read r8 value )
+  #ff EOR ( cpl )
+  ROT ROT STA ( store new value in A )
+
+  ;reg8/F LDAk
+  #90 AND ( retain z c )
+  #60 ORA ( set h n )
+  ROT ROT STA ( - 1 1 - )
+JMP2r
+
+@do-SCF ( instr -- instr )
+  ;reg8/F LDAk
+  #80 AND ( get prior Z flag )
+  #10 ORA ( set carry flag )
+  ROT ROT STA ( store new flags )
+JMP2r
+
+@do-CCF ( instr -- instr )
+  ;reg8/F LDAk
+  #10 EOR ( invert carry flag )
+  #90 AND ( clear N H flags )
+  ROT ROT STA ( store new flags )
+JMP2r
+
+@do-BIT ( instr -- instr )
+  #01 ( initial bitmask )
+  OVR #38 AND #10 SFT ( get shift count for bitmask )
+  SFT ( shift initial bitmask by shift count )
+  OVR #07 AND GET-R8-ADDR ( get r8 )
+  LDA ( read r8 value )
+  AND ( AND with bitmask to check bit )
+
+  #00 EQU #70 SFT STH ( z )
+  ;reg8/F LDAk
+  #10 AND ( retain c )
+  STHr ORA ( c|z )
+  #20 ORA ( h )
+  ROT ROT STA ( z 0 1 - )
+JMP2r
+
+@do-RES ( instr -- instr )
+  #01 ( initial bitmask )
+  OVR #38 AND #10 SFT ( get shift count for bitmask )
+  SFT ( shift initial bitmask by shift count )
+  #ff EOR ( invert bitmask )
+  OVR #07 AND GETSET-R8-ADDR ( get r8 )
+  STH2 ( move addr to rst )
+  LDAkr ( read r8 value onto rst )
+  STHr ( move value to wst )
+  AND ( AND with inverted mask to clear bit )
+  STH2r ( get addr from rst )
+  ;write8 JSR2 ( store new value )
+JMP2r
+
+@do-SET ( instr -- instr )
+  #01 ( initial bitmask )
+  OVR #38 AND #10 SFT ( get shift count for bitmask )
+  SFT ( shift initial bitmask by shift count )
+  OVR #07 AND GETSET-R8-ADDR ( get r8 )
+  STH2 ( move addr to rst )
+  LDAkr ( read r8 value onto rst )
+  STHr ( move value to wst )
+  ORA ( ORA with mask to set bit )
+  STH2r ( get addr from rst )
+  ;write8 JSR2 ( store new value )
+JMP2r
+
+@do-RLC ( instr -- instr )
+  DUP #07 AND GETSET-R8-ADDR ( get r8 )
+  LDAk ( read r8 value )
+  #00 SWP ( convert to short )
+  #10 SFT2 ( shift into high byte )
+  OVR STH ( copy high byte and move to rst )
+  ORA ( OR low/high bytes to put bit 7 into bit 0 )
+  STHk ( copy result to rst )
+  ROT ROT ;write8 JSR2 ( store new value in r8 )
+
+  STHr ( recover value from rst )
+  #00 EQU #70 SFT ( z )
+  STHr #40 SFT ORA ( c )
+  ;reg8/F STA ( z 0 0 c )
+JMP2r
+
+@do-RRC ( instr -- instr )
+  DUP #07 AND GETSET-R8-ADDR ( get r8 )
+  LDAk ( read r8 value )
+  #00 ( push empty low byte )
+  #01 SFT2 ( shift into low byte )
+  STHk ( copy low byte to rst )
+  ORA ( OR shifted bit 0 onto bit 7 )
+  STHk ( copy result to rst )
+  ROT ROT ;write8 JSR2 ( store new value in r8 )
+
+  STHr ( recover value from rst )
+  #00 EQU #70 SFT ( z )
+  STHr #03 SFT ORA ( c )
+  ;reg8/F STA ( z 0 0 c )
+JMP2r
+
+@do-RL ( instr -- instr )
+  DUP #07 AND GETSET-R8-ADDR ( get r8 )
+  LDAk ( read r8 value )
+  #00 SWP ( convert to short )
+  #10 SFT2 ( shift into high byte )
+  SWP STH ( move high byte to rst )
+  ;reg8/F LDA #10 AND #04 SFT ( get carry flag in bit 0 )
+  ORA ( OR carry flag into bit 0 )
+  STHk ( copy result to rst )
+  ROT ROT ;write8 JSR2 ( store new value in r8 )
+
+  STHr ( recover value from rst )
+  #00 EQU #70 SFT ( z )
+  STHr #40 SFT ORA ( c )
+  ;reg8/F STA ( z 0 0 c )
+JMP2r
+
+@do-RR ( instr -- instr )
+  DUP #07 AND GETSET-R8-ADDR ( get r8 )
+  LDAk ( read r8 value )
+  #00 ( push empty low byte )
+  #01 SFT2 ( shift into low byte )
+  STH ( move low byte to rst )
+  ;reg8/F LDA #10 AND #30 SFT ( get carry flag in bit 7 )
+  ORA ( OR carry flag into bit 7 )
+  STHk ( copy result to rst )
+  ROT ROT ;write8 JSR2 ( store new value in r8 )
+
+  STHr ( recover value from rst )
+  #00 EQU #70 SFT ( z )
+  STHr #03 SFT ORA ( c )
+  ;reg8/F STA ( z 0 0 c )
+JMP2r
+
+@do-SLA ( instr -- instr )
+  DUP #07 AND GETSET-R8-ADDR ( get r8 )
+  LDAk ( read r8 value )
+  #00 SWP ( convert to short )
+  #10 SFT2 ( shift into high byte )
+  STH2k ( copy short to rst )
+  NIP ( discard high byte )
+  ROT ROT ;write8 JSR2 ( store new value in r8 )
+
+  STHr ( recover value from rst )
+  #00 EQU #70 SFT ( z )
+  STHr #40 SFT ORA ( c )
+  ;reg8/F STA ( z 0 0 c )
+JMP2r
+
+@do-SRA ( instr -- instr )
+  DUP #07 AND GETSET-R8-ADDR ( get r8 )
+  LDAk ( read r8 value )
+  STHk ( copy value to rst )
+  LITr 80 ANDr ( mask down to bit on rst )
+  #00 ( push empty low byte )
+  #01 SFT2 ( shift into low byte )
+  STHr ( recover bit 7 )
+  SWP
+  STH ( move low byte to rst )
+  ORA ( OR value and bit7 together )
+  STHk ( copy result to rst )
+  ROT ROT ;write8 JSR2 ( store new value in r8 )
+
+  STHr ( recover value from rst )
+  #00 EQU #70 SFT ( z )
+  STHr #03 SFT ORA ( c )
+  ;reg8/F STA ( z 0 0 c )
+JMP2r
+
+@do-SWAP ( instr -- instr )
+  DUP #07 AND GETSET-R8-ADDR ( get r8 )
+  LDAk ( read r8 value )
+  DUP #04 SFT ( get new low nibble )
+  SWP
+  #40 SFT ( get new high nibble )
+  ORA ( combine nibbles )
+  STHk ROT ROT ;write8 JSR2 ( store new value in r8 )
+  STHr
+  #00 EQU #70 SFT ( Z flag )
+  ;reg8/F STA ( z 0 0 0 )
+JMP2r
+
+@do-SRL ( instr -- instr )
+  DUP #07 AND GETSET-R8-ADDR ( get r8 )
+  LDAk ( read r8 value )
+  #00 ( push empty low byte )
+  #01 SFT2 ( shift into low byte )
+  STH ( move low byte to rst )
+  STHk ( copy result to rst )
+  ROT ROT ;write8 JSR2 ( store new value in r8 )
+
+  STHr ( recover value from rst )
+  #00 EQU #70 SFT ( z )
+  STHr #03 SFT ORA ( c )
+  ;reg8/F STA ( z 0 0 c )
+JMP2r
+
+@do-NOP ( instr -- instr )
+JMP2r
+
+@do-HALT ( instr -- instr )
+  #01 ;halt STA
+JMP2r
+
+@do-INVALID ( instr -- instr )
+  ;msg-invalidInstruction ;pstr JSR2
+  HALT
+
+@msg-invalidInstruction
+  "Invalid 20 "Instruction $1
+
+( *** SM83 Write Handler *** )
+
+@write8 ( value addr -- )
+
+  ( General write handlers regardless of MBC )
+
+  ( Joypad select )
+  DUP2 ;io/rP1 NEQ2 ,&notJoypad JCN
+    POP2 ( discard addr )
+    #30 AND ( clear old low nibble of rP1 )
+    DUP #20 NEQ ,&notAction JCN
+      ;joypad LDA #f0 AND ( get high nibble of joypad state )
+      #04 SFT ( shift to low nibble )
+      ,&doneJoypad JMP
+    &notAction
+    DUP #10 NEQ ,&notDirection JCN
+      ;joypad LDA #0f AND ( get low nibble of joypad state )
+      ,&doneJoypad JMP
+    &notDirection
+      #0f ( everything unpressed )
+    &doneJoypad
+    ORA ;io/rP1 STA ( set new states, store rP1 )
+    JMP2r
+  &notJoypad
+
+  ( OAM DMA )
+  DUP2 ;io/rDMA NEQ2 ,&notOAMDMA JCN
+    POP2 ( discard addr )
+    STH ( move high byte to rst )
+    #a000 ( copy 160 bytes )
+    &oamdmaLoop
+      STHkr OVR ( address of byte to copy )
+      LDA ( read byte )
+      OVR #fe SWP ( OAM address to copy to )
+      STA ( write byte )
+    INC GTHk ,&oamdmaLoop JCN
+    POP2 ( discard loop counters )
+    POPr ( discard high byte on rst )
+    JMP2r
+  &notOAMDMA
+
+  ( DIV reset )
+  DUP2 ;io/rDIV NEQ2 ,&notDIV JCN
+    POP2 POP ( discard all inputs )
+    #0000 ;io/rDIVlow STA2k ( reset entire counter )
+    POP2 ;timerShort STA2 ( also reset timerShort duplicate counter )
+    JMP2r
+  &notDIV
+
+  ( TIMA duplicate write to internal timer tracker )
+  DUP2 ;io/rTIMA NEQ2 ,&notTIMA JCN
+    STAk ( carry out actual write )
+    POP2 ( discard target addr )
+    ;timerShort STA ( duplicate write to shadow byte, leaving low byte untouched )
+    JMP2r
+  &notTIMA
+
+  ( IF is a 5 bit register, so always set the top 3 bits )
+  DUP2 ;io/rIF NEQ2 ,&notIF JCN
+    ROT #e0 ORA ( set top 3 bits )
+    ROT ROT STA ( write )
+    JMP2r
+  &notIF
+
+  ( fall through into MBC handler )
+@MBCHandler $100 ( reserve space for MBC handler to be copied to )
+
+( *** UXN Utility Functions *** )
+@print-state ( -- )
+  ;str-BC ;pstr JSR2 ;reg8/B LDA ;print-hex JSR2 ;reg8/C LDA ;print-hex JSR2
+  ;str-DE ;pstr JSR2 ;reg8/D LDA ;print-hex JSR2 ;reg8/E LDA ;print-hex JSR2
+  ;str-HL ;pstr JSR2 ;reg8/H LDA ;print-hex JSR2 ;reg8/L LDA ;print-hex JSR2
+  ;str-AF ;pstr JSR2 ;reg8/A LDA ;print-hex JSR2 ;reg8/F LDA ;print-hex JSR2
+  ;str-SP ;pstr JSR2 ;reg8/SPhigh LDA ;print-hex JSR2 ;reg8/SPlow LDA ;print-hex JSR2
+  ;str-PC ;pstr JSR2 ;PC/high LDA ;print-hex JSR2 ;PC/low LDA ;print-hex JSR2
+  ( ;str-LY ;pstr JSR2 ;io/rLY LDA ;print-hex JSR2
+  ;str-dot ;pstr JSR2 ;ppuDot/high LDA ;print-hex JSR2 ;ppuDot/low LDA ;print-hex JSR2
+  ;str-stat ;pstr JSR2 ;io/rSTAT LDA ;print-hex JSR2
+  ;str-timerShort ;pstr JSR2 ;timerShort LDA ;print-hex JSR2 ;timerShortLow LDA ;print-hex JSR2 ;io/rTIMA LDA ;print-hex JSR2
+  ;str-TIMA ;pstr JSR2 ;io/rTIMA LDA ;print-hex JSR2 )
+  #0a .Console/write DEO
+JMP2r
+
+@str-BC "BC= $1
+@str-DE 20 "DE= $1
+@str-HL 20 "HL= $1
+@str-AF 20 "AF= $1
+@str-SP 20 "SP= $1
+@str-PC 20 "PC= $1
+@str-LY 20 "LY= $1
+@str-dot 20 "ppuDot= $1
+@str-stat 20 "stat= $1
+@str-timerShort 20 "tShort= $1
+@str-TIMA 20 20 "@$ff05 20 "= 20 "$ $1
+
+@print-hex ( byte -- )
+  DUP
+  ( lowercase hex use #27, uppercase: #07 )
+  #04 SFT #30 ADD [ #3a LTHk NIP ,&highDigit JCN #07 ADD &highDigit ] .Console/write DEO
+  #0f AND #30 ADD [ #3a LTHk NIP ,&lowDigit JCN #07 ADD &lowDigit ] .Console/write DEO
+JMP2r
+
+
+(
+@|stdlib )
+
+@scap ( str* -- end* ) LDAk #00 NEQ JMP JMP2r &w INC2 LDAk ,&w JCN JMP2r
+@sput ( chr str* -- ) ,scap JSR STA JMP2r
+@slen ( str* -- len* ) DUP2 ,scap JSR SWP2 SUB2 JMP2r
+@scmp ( a* b* -- f ) STH2 &l LDAk LDAkr STHr ANDk #00 EQU ,&e JCN NEQk ,&e JCN POP2 INC2 INC2r ,&l JMP &e NIP2 POP2r EQU JMP2r
+@sclr ( str* -- ) LDAk ,&w JCN POP2 JMP2r &w STH2k #00 STH2r STA INC2 LDAk ,&w JCN POP2 JMP2r
+@scpy ( src* dst* -- ) OVR2 LDA ,&e JCN POP2 POP2 JMP2r &e STH2 &w LDAk STH2kr STA INC2r INC2 LDAk ,&w JCN POP2 #00 STH2r STA JMP2r
+@skey ( key buf -- proc ) OVR #21 LTH ,&eval JCN #00 SWP ;sput JSR2 #00 JMP2r &eval POP2 #01 JMP2r
+@pstr ( str* -- ) &w LDAk #18 DEO INC2 LDAk ,&w JCN POP2 JMP2r
+
+@load-theme ( -- )
+    ;theme/path .File0/name DEO2
+    #0006 .File0/length DEO2
+    ;theme/data .File0/read DEO2
+    .File0/success DEI2 #0006 NEQ2 ,&failed JCN
+        ( set system colors from loaded theme )
+        ;theme/r LDA2 .System/r DEO2
+        ;theme/g LDA2 .System/g DEO2
+        ;theme/b LDA2 .System/b DEO2
+    &failed
+    #0000 .File0/name DEO2 ( close file to allow deletion while running )
+JMP2r
+@theme
+    &path ".theme $1
+    &data [ &r $2 &g $2 &b $2 ]
+
+( Note: This must end before fdff to avoid overflowing into Game Boy address space )
