@@ -1,0 +1,88 @@
+(
+@|sm83memoryMap )
+
+|0000
+@rom0
+
+( * Interrupt Vectors * )
+|0040
+@vectorVBlank
+|0048
+@vectorSTAT
+|0050
+@vectorTimer
+|0058
+@vectorSerial
+|0060
+@vectorJoypad
+
+|4000
+@romx
+
+( The ROM header is read into romx for inspection on startup )
+|4100
+@header
+&entryPoint $4
+&logo $30
+&title $0b
+&manufCode $4
+&cgbFlag $1
+&newLicenseeCode $2
+&sgbFlag $1
+&cartridgeType $1
+&romSize $1
+&ramSize $1
+&destinationCode $1
+&oldLicenseeCode $1
+&maskRomVersion $1
+&headerChecksum $1
+&globalChecksum $2
+
+|8000
+@vram
+
+|a000
+@sram
+
+|c000
+@wram
+
+|fe00
+@oam
+
+|ff00 ( IO register layout )
+@io [ &rP1 $1 &rSB $1 &rSC $1 ]
+    [ &rDIVlow $1 ]
+    [ &rDIV $1 &rTIMA $1 &rTMA $1 &rTAC $1 ]
+    [ $7 ]
+    [ &rIF $1 ]
+    [ &rNR10 $1 &rNR11 $1 &rNR12 $1 &rNR13 $1 &rNR14 $1 ]
+    [ &rNR20 $1 &rNR21 $1 &rNR22 $1 &rNR23 $1 &rNR24 $1 ]
+    [ &rNR30 $1 &rNR31 $1 &rNR32 $1 &rNR33 $1 &rNR34 $1 ]
+    [ &rNR40 $1 &rNR41 $1 &rNR42 $1 &rNR43 $1 &rNR44 $1 ]
+    [ &rNR50 $1 &rNR51 $1 &rNR52 $1 ]
+    [ $19 ]
+    [ &rLCDC $1 &rSTAT $1 &rSCY $1 &rSCX $1 &rLY $1 &rLYC $1 ]
+    [ &rDMA $1 ]
+    [ &rBGP $1 &rOBP0 $1 &rOBP1 $1 ]
+    [ &rWY $1 &rWX $1 ]
+    [ $1 ]
+    [ &rKEY1 $1 ] ( CGB only )
+    [ $1 ]
+    [ &rVBK $1 ] ( CGB only )
+    [ $1 ]
+    [ &rHDMA1 $1 &rHDMA2 $1 &rHDMA3 $1 &rHDMA4 $1 &rHDMA5 $1 ] ( CGB only )
+    [ &rRP $1 ] ( CGB only )
+    [ $11 ]
+    [ &rBCPS $1 &rBCPD $1 ] ( CGB only )
+    [ &rOCPS $1 &rOCPD $1 ] ( CGB only )
+    [ $4 ]
+    [ &rSVBK $1 ] ( CGB only )
+    [ $5 ]
+    [ &rPCM12 $1 &rPCM34 $1 ]
+
+|ff80
+@hram
+
+|ffff
+@rIE

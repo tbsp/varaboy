@@ -1,0 +1,277 @@
+
+(
+@|mbcHandlers )
+( Note: These are stored here in the ROM with the appropriate handler being 
+  copied to the @MBC label at runtime. )
+@MBCHandlerLookup ( 00 ) [ =MBCNone      =MBC1Handler  =MBC1Handler =MBC1Handler  ]
+                  ( 04 ) [ =MBCInvalid   =MBC2Handler  =MBC2Handler =MBCInvalid   ]
+                  ( 08 ) [ =MBCNone      =MBCNone      =MBCInvalid  =MMM01Handler ]
+                  ( 0c ) [ =MMM01Handler =MMM01Handler =MBCNone     =MBC3Handler  ]
+                  ( 10 ) [ =MBC3Handler  =MBC3Handler  =MBC3Handler =MBC3Handler  ]
+                  ( 14 ) [ =MBCInvalid   =MBCInvalid   =MBCInvalid  =MBCInvalid   ]
+                  ( 18 ) [ =MBCInvalid   =MBC5Handler  =MBC5Handler =MBC5Handler  ]
+                  ( 1c ) [ =MBC5Handler  =MBC5Handler  =MBC5Handler =MBCInvalid   ]
+
+@SRAMBankCounts [ 00 00 01 04 10 08 ]
+
+@MBCNone
+  STA
+JMP2r
+
+@MBCInvalid
+  ,MBCInvalid JMP
+
+@MBC1Handler
+
+  ( ROM bank number (2000-3fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #2000 NEQ2 ,&notROMBank JCN
+    POP2 ( discard addr )
+    DUP #00 NEQ ,&notBank0 JCN INC &notBank0 ( 0 -> bank 1 )
+    INC ( increment counter target )
+
+    ( since we can't seek, we read 16KB at a time into the ROM1
+      region until we've read the target bank )
+    ( TODO: Test unpacking banked ROMs into multiple files for faster bank swaps,
+      similar to SRAM. )
+    ;filepath .File0/name DEO2
+    #00 ( bank counter )
+    &ROMbankLoop
+      ;romx .File0/read DEO2 ( trigger the read to ROM1 )
+      INC GTHk ,&ROMbankLoop JCN
+    POP2
+    #0000 .File0/name DEO2 ( close file )
+    JMP2r
+  &notROMBank
+
+  ( RAM enable (0000-1fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 ORA ,&notRAMEnable JCN
+    POP2 ( discard addr )
+    #0f AND #0a EQU ,&enableRAM JCN
+      ( disable RAM )
+      #00 ;MBCRegs/RAMEnable STA
+      JMP2r
+
+    &enableRAM
+      #01 ;MBCRegs/RAMEnable STA ( enable RAM )
+      ;MBCRegs/RAMBank LDA ,&activateRAMBank JMP ( ensure the current RAM bank's data is loaded )
+  &notRAMEnable
+
+  ( RAM bank number (4000-5fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #4000 NEQ2 ,&notRAMBank JCN
+    POP2 ( discard addr )
+
+    DUP ;MBCRegs/RAMBank STA ( write new bank number )
+    ;MBCRegs/RAMEnable LDA ,&ramEnabled JCN
+      POP JMP2r ( RAM not active, don't load the data )
+    &ramEnabled
+
+    &activateRAMBank
+    ( wst: bankToActivate )
+    ;loadedRAMBank LDA NEQk ,&loadBank JCN
+      POP2 JMP2r ( bank already loaded, do nothing )
+    &loadBank
+
+    ( TODO: I think pokeblue gets an invalid bank value here somewhere, giving a + symbol in the file )
+
+    ( write current SRAM contents to previously loaded bank file )
+    #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/write DEO2 ( write out to bank file )
+
+    ( load new bank contents from file into SRAM )
+    DUP #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/read DEO2 ( read from bank file )
+    #0000 .File1/name DEO2 ( close file )
+
+    ;loadedRAMBank STA ( store the bank for which we've loaded data )
+
+    JMP2r
+  
+  &notRAMBank
+
+  ( TODO: Catch writes to SRAM (a000-bfff), and block if RAM isn't enabled? )
+  ( DUP2 #f000 AND2 #a000 NEQ2 ,&notSRAMWrite JCN
+    ROTk #00 EQU ,&zero JCN DBG &zero POP2
+  &notSRAMWrite )
+
+  ( Banking mode select (6000-7fff) )
+
+  STA
+JMP2r
+
+@MBC2Handler
+  STA
+JMP2r
+
+@MMM01Handler
+  STA
+JMP2r
+
+@MBC3Handler
+  ( ROM bank number (2000-3fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #2000 NEQ2 ,&notROMBank JCN
+    POP2 ( discard addr )
+    DUP #00 NEQ ,&notBank0 JCN INC &notBank0 ( 0 -> bank 1 )
+    INC ( increment counter target )
+
+    ( since we can't seek, we read 16KB at a time into the ROM1
+      region until we've read the target bank )
+    ( TODO: Test unpacking banked ROMs into multiple files for faster bank swaps,
+      similar to SRAM. )
+    ;filepath .File0/name DEO2
+    #00 ( bank counter )
+    &ROMbankLoop
+      ;romx .File0/read DEO2 ( trigger the read to ROM1 )
+      INC GTHk ,&ROMbankLoop JCN
+    POP2
+    #0000 .File0/name DEO2 ( close file )
+    JMP2r
+  &notROMBank
+
+  ( RAM enable (0000-1fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 ORA ,&notRAMEnable JCN
+    POP2 ( discard addr )
+    #0f AND #0a EQU ,&enableRAM JCN
+      ( disable RAM )
+      #00 ;MBCRegs/RAMEnable STA
+      JMP2r
+
+    &enableRAM
+      #01 ;MBCRegs/RAMEnable STA ( enable RAM )
+      ;MBCRegs/RAMBank LDA ,&activateRAMBank JMP ( ensure the current RAM bank's data is loaded )
+  &notRAMEnable
+
+  ( RAM bank number (4000-5fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #4000 NEQ2 ,&notRAMBank JCN
+    POP2 ( discard addr )
+
+    ( check for RTC register select )
+    DUP #07 GTH ,&RTCSelect JCN
+
+    DUP ;MBCRegs/RAMBank STA ( write new bank number )
+    ;MBCRegs/RAMEnable LDA ,&ramEnabled JCN
+      POP JMP2r ( RAM not active, don't load the data )
+    &ramEnabled
+
+    &activateRAMBank
+    ( wst: bankToActivate )
+    ;loadedRAMBank LDA NEQk ,&loadBank JCN
+      POP2 JMP2r ( bank already loaded, do nothing )
+    &loadBank
+
+    ( write current SRAM contents to previously loaded bank file )
+    #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/write DEO2 ( write out to bank file )
+
+    ( load new bank contents from file into SRAM )
+    DUP #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/read DEO2 ( read from bank file )
+    #0000 .File1/name DEO2 ( close file )
+
+    ;loadedRAMBank STA ( store the bank for which we've loaded data )
+
+    JMP2r
+
+    &RTCSelect
+    ( TODO: Handle RTC somehow? )
+    JMP2r
+  
+  &notRAMBank
+
+  ( TODO: Catch writes to SRAM (a000-bfff), and block if RAM isn't enabled? )
+  ( DUP2 #f000 AND2 #a000 NEQ2 ,&notSRAMWrite JCN
+    ROTk #00 EQU ,&zero JCN DBG &zero POP2
+  &notSRAMWrite )
+
+  ( Banking mode select (6000-7fff) )
+
+  STA
+JMP2r
+
+@MBC5Handler
+  ( Note: This handler is essentially the same as the MBC1 handler except 
+    that it doesn't re-direct ROM banks of 0 to 1. Due to how we copy the
+    handlers into echo RAM, code isn't reused between the two )
+
+  ( ROM bank number (2000-3fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #2000 NEQ2 ,&notROMBank JCN
+    POP2 ( discard addr )
+    INC ( increment counter target )
+
+    ( since we can't seek, we read 16KB at a time into the ROM1
+      region until we've read the target bank )
+    ( TODO: Test unpacking banked ROMs into multiple files for faster bank swaps,
+      similar to SRAM. )
+    ;filepath .File0/name DEO2
+    #00 ( bank counter )
+    &ROMbankLoop
+      ;romx .File0/read DEO2 ( trigger the read to ROM1 )
+      INC GTHk ,&ROMbankLoop JCN
+    POP2
+    #0000 .File0/name DEO2 ( close file )
+    JMP2r
+  &notROMBank
+
+  ( RAM enable (0000-1fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 ORA ,&notRAMEnable JCN
+    POP2 ( discard addr )
+    #0f AND #0a EQU ,&enableRAM JCN
+      ( disable RAM )
+      #00 ;MBCRegs/RAMEnable STA
+      JMP2r
+
+    &enableRAM
+      #01 ;MBCRegs/RAMEnable STA ( enable RAM )
+      ;MBCRegs/RAMBank LDA ,&activateRAMBank JMP ( ensure the current RAM bank's data is loaded )
+  &notRAMEnable
+
+  ( RAM bank number (4000-5fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #4000 NEQ2 ,&notRAMBank JCN
+    POP2 ( discard addr )
+
+    DUP ;MBCRegs/RAMBank STA ( write new bank number )
+    ;MBCRegs/RAMEnable LDA ,&ramEnabled JCN
+      POP JMP2r ( RAM not active, don't load the data )
+    &ramEnabled
+
+    &activateRAMBank
+    ( wst: bankToActivate )
+    ;loadedRAMBank LDA NEQk ,&loadBank JCN
+      POP2 JMP2r ( bank already loaded, do nothing )
+    &loadBank
+
+    ( write current SRAM contents to previously loaded bank file )
+    #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/write DEO2 ( write out to bank file )
+
+    ( load new bank contents from file into SRAM )
+    DUP #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
+    ;bankPathDigit STA ( replace bank character in bankPath )
+    ;bankPath .File1/name DEO2 ( set name for bank file )
+    ;sram .File1/read DEO2 ( read from bank file )
+    #0000 .File1/name DEO2 ( close file )
+
+    ;loadedRAMBank STA ( store the bank for which we've loaded data )
+
+    JMP2r
+  
+  &notRAMBank
+
+  ( TODO: Catch writes to SRAM (a000-bfff), and block if RAM isn't enabled? )
+  ( DUP2 #f000 AND2 #a000 NEQ2 ,&notSRAMWrite JCN
+    ROTk #00 EQU ,&zero JCN DBG &zero POP2
+  &notSRAMWrite )
+
+  ( Banking mode select (6000-7fff) )
+
+  STA
+JMP2r
