@@ -186,7 +186,7 @@ BRK
     DUP ;SRAMBanks STA ( store for use during banking )
     #2000 .File1/length DEO2 ( SRAM banks are 8KB )
     ;sram .File1/read DEO2 ( attempt read from file )
-    .File1/success DEI2 #0000 NEQ2 ( check success value ) ,&saveFileExists JCN
+    .File1/success DEI2 ORA ( check success value ) ,&saveFileExists JCN
       ( zero-fill SRAM file to full size )
       #00 ( counter )
       &SRAMFillLoop
@@ -333,7 +333,7 @@ JMP2r
   &notROMBank
 
   ( RAM enable (0000-1fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 #0000 NEQ2 ,&notRAMEnable JCN
+  DUP2 #f000 AND2 ORA ,&notRAMEnable JCN
     POP2 ( discard addr )
     #0f AND #0a EQU ,&enableRAM JCN
       ( disable RAM )
@@ -421,7 +421,7 @@ JMP2r
   &notROMBank
 
   ( RAM enable (0000-1fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 #0000 NEQ2 ,&notRAMEnable JCN
+  DUP2 #f000 AND2 ORA ,&notRAMEnable JCN
     POP2 ( discard addr )
     #0f AND #0a EQU ,&enableRAM JCN
       ( disable RAM )
@@ -509,7 +509,7 @@ JMP2r
   &notROMBank
 
   ( RAM enable (0000-1fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 #0000 NEQ2 ,&notRAMEnable JCN
+  DUP2 #f000 AND2 ORA ,&notRAMEnable JCN
     POP2 ( discard addr )
     #0f AND #0a EQU ,&enableRAM JCN
       ( disable RAM )
@@ -1308,15 +1308,15 @@ JMP2r
 @do-LDr8u8 ( instr -- instr )
   DUP #38 AND #03 SFT GET-R8-ADDR STH2 ( stash target addr )
   READ8PC ( read u8 )
-  STH2r ;write8 JSR2 ( recover target addr and write value )
-JMP2r
+  STH2r ;write8 ( .. ) ( recover target addr and write value )
+JMP2
 
 @do-LDr8r8 ( instr -- instr )
   DUP #38 AND #03 SFT GET-R8-ADDR STH2 ( stash target addr )
   DUP #07 AND GET-R8-ADDR_2
   LDA ( read source r8 )
-  STH2r ;write8 JSR2 ( recover target addr and write value )
-JMP2r
+  STH2r ;write8 ( .. ) ( recover target addr and write value )
+JMP2
 
 @do-LDSPHL ( instr -- instr )
   ;reg8/H LDA2
@@ -1365,7 +1365,6 @@ JMP2r
   ;reg8/A STA ( store in A )
   TICK ( extra tick )
 JMP2r
-
 
 @do-LDAr16 ( instr -- instr )
   ( Note: The [r16] source options are: [bc], [de], [hli], [hld] )
@@ -1833,8 +1832,8 @@ JMP2r
   STHr ( move value to wst )
   AND ( AND with inverted mask to clear bit )
   STH2r ( get addr from rst )
-  ;write8 JSR2 ( store new value )
-JMP2r
+  ;write8 ( .. ) ( store new value )
+JMP2
 
 @do-SET ( instr -- instr )
   #01 ( initial bitmask )
@@ -1846,8 +1845,8 @@ JMP2r
   STHr ( move value to wst )
   ORA ( ORA with mask to set bit )
   STH2r ( get addr from rst )
-  ;write8 JSR2 ( store new value )
-JMP2r
+  ;write8 ( .. ) ( store new value )
+JMP2
 
 @do-RLC ( instr -- instr )
   DUP #07 AND GETSET-R8-ADDR ( get r8 )
