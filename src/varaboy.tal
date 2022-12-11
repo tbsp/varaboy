@@ -104,6 +104,7 @@ BRK
     #2000 .File1/length DEO2 ( SRAM banks are 8KB )
     ;sram .File1/read DEO2 ( attempt read from file )
     .File1/success DEI2 ORA ( check success value ) ,&saveFileExists JCN
+    .File1/success DEI2 ORA ( check success value ) ,&saveFileExists JCN
       ( zero-fill SRAM file to full size )
       #00 ( counter )
       &SRAMFillLoop
