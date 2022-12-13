@@ -153,7 +153,7 @@ BRK
   POP2 POP2 POP2r             ( )
 
   ( Initialize emulator state )
-  #04 ;frameSkip STA ( Note: A value of 1 means no frameskip )
+  #01 ;frameSkip STA ( Note: A value of 1 means no frameskip )
   #01 ;frameSkipCounter STA ( Must be 1 to draw the initial frame )
   
   ( Initialize CPU state )
@@ -232,7 +232,6 @@ BRK
           ( repack multiple SRAM bank files )
           #2000 .File0/length DEO2 ( set length for reads from bank files )
           #00 ( counter )
-          DBG
           &packLoop
             DUP #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
             ;bankPathDigit STA ( replace bank character in bankPath )
@@ -418,6 +417,76 @@ JMP2r
                 two 10-tile Screen/sprite calls is faster than this per-pixel drawing. Though uxnemu seems faster
                 than uxn32 in this regard, so it might depend on the host VM. )
 
+              LIT2r =oamScanTable ( setup pointer to store sprites for this scanline )
+              #02 ;io/rLCDC LDA AND #00 EQU ;&skipOAMScan JCN2 ( check if sprites are enabled )
+
+                ( Perform OAM scan, identifying the first 10 sprites which are visible on this scanline. Copy the required
+                  data to render each sprite on this line to the oamScanTable for use during rendering. )
+                
+                ( calculate sprite XOR value and height for visibility calculation, write ahead )
+                #0f [ #04 ;io/rLCDC LDA AND ,&tallSprites JCN POP #07 &tallSprites ] 
+                  DUP ,&spriteYXOR STR
+                  DUP #03 SFT #ff EOR ,&tileIDMask STR ( AND mask for bit0 of tileID for 8x16 sprites )
+                  INC ,&spriteHeight STR
+                ;io/rLY LDA #10 ADD ,&lyPlus16 STR ( write LY+16 ahead )
+
+                #2800 ( setup 0-40 counter, for the 40 sprite entries )
+                &oamScanLoop
+                  ( wst: ? ? ? ? #a0 px bgPxColor #28 lowAddr )
+                  ( rst: )
+
+                  #fe OVR #20 SFT ( point to OAM entry )
+                  LDAk ( read Y ) LIT [ &lyPlus16 $1 ] SWP SUB ( spriteY = LY + 16 - Y ) 
+                    DUP LIT [ &spriteHeight $1 ] LTH ,&yVisible JCN POP POP2 ,&nextSprite JMP ( not visible based on height )
+                    &yVisible ,&spriteY STR ( write ahead )
+
+                  INC ( advance to X )
+                  LDAk STH ( read X, move to rst )
+                  INC ( advance to tileID )
+                  LDA2 STH2 ( read tileID, attr and move to rst )
+                  DUPr LITr _&attr STRr ( push attr ahead for caching )
+
+                  ( yOffset = ( spriteY ^ 7|0 ) * 2 )
+                  LIT2 [  &spriteY $1 &spriteYXOR $1 ] STHr #40 AND ,&vFlip JCN POP #00 &vFlip EOR #10 SFT ,&ySprOffset STR
+
+                  ( wst: #28 lowAddr )
+                  ( rst: oamScanTable* X tileID )
+
+                  LIT2 00 [ &ySprOffset $1 ]
+
+                  #00 STHr ( setup tileID as short )
+                  LIT [ &tileIDMask $1 ] AND ( clear bit0 for 8x16 mode )
+                  #40 SFT2 ( * 16 )
+                  #8000 ADD2 ( add tile data base addr )
+                  ADD2 ( yOffset + addr to get addr of sprite tile data )
+
+                  STHr ( move X back to wst )
+                  ( wst: #28 lowAddr tileAddr X )
+                  ( rst: oamScanTable* )
+
+                  ( Store in oamScanTable: X high low attr )
+                  STH2kr STA INC2r ( write X to oamScanLoop, inc ptr )
+                  LDAk ( get tile low byte )
+                  STH2kr STA INC2r ( write tileLowByte to oamScanTable, inc ptr )
+                  INC2 LDA ( get tile high byte )
+                  STH2kr STA INC2r ( write tileHighByte to oamScanTable, inc ptr )
+                  LIT [ &attr $1 ] ( attr byte )
+                  STH2kr STA INC2r ( write attr to oamScanTable, inc ptr )
+
+                  ( wst: #28 lowAddr )
+                  ( rst: oamScanTable* )
+
+                  ( the oamScanTable is aligned such that when we reach 10 entries the low byte will be zero )
+                  DUPr LITr 00 EQUr LITr _&reached10Sprites JCNr
+
+                &nextSprite
+                INC GTHk ,&oamScanLoop JCN
+              &reached10Sprites
+              POP2
+
+              &skipOAMScan
+              LITr ff ROTr ROTr STAr ( write table teriminator, either to skip sprites entirely OR for the end of the table content )
+
               ( Pre-calculate and STR ahead as many values that are static for the scanline as possible, for speed )
               #01 ;io/rLCDC LDA AND ,&isBGEnabled STR
               #20 ;io/rLCDC LDA AND #00 EQU ( check if window is disabled in rLCDC )
@@ -527,75 +596,61 @@ JMP2r
 
                 ( Sprites! )
                 &sprites
-                #02 ;io/rLCDC LDA AND #00 EQU ;&palettes JCN2 ( check if sprites are enabled )
 
                 ( wst: ? ? ? ? #a0 px bgPxColor )
                 ( rst: )
 
-                ( calculate sprite XOR value and height for visibility calculation, write ahead )
-                #0f [ #04 ;io/rLCDC LDA AND ,&tallSprites JCN POP #07 &tallSprites ] 
-                  DUP ,&spriteYXOR STR
-                  DUP #03 SFT #ff EOR ,&tileIDMask STR ( AND mask for bit0 of tileID for 8x16 sprites )
-                  INC ,&spriteHeight STR
-                ;io/rLY LDA #10 ADD ,&lyPlus16 STR ( write LY+16 ahead )
-                OVR #08 ADD ,&pxPlus8 STR ( write px+8 ahead )
+                OVR #08 ADD ,&pxPlus8 STR ( write px+8 ahead, which is a waste if there are no visible sprites... )
 
-                #2800 ( setup 0-40 counter, for the 40 sprite entries )
+                LIT2r =oamScanTable ( point at oamScanTable, which tracks visible sprites this scanline )
                 &spriteLoop
-                  ( wst: ? ? ? ? #a0 px bgPxColor #a0 lowAddr )
-                  ( rst: )
+                  ( wst: ? ? ? ? #a0 px bgPxColor )
+                  ( rst: oamScanTable* )
 
-                  #fe OVR #20 SFT ( point to OAM entry )
-                  LDAk ( read Y ) LIT [ &lyPlus16 $1 ] SWP SUB ( spriteY = LY + 16 - Y ) 
-                    DUP LIT [ &spriteHeight $1 ] LTH ,&yVisible JCN POP POP2 ;&nextSprite JMP2 ( not visible based on height )
-                    &yVisible ,&spriteY STR ( write ahead )
-                  INC ( advance to X )
-                  LDAk ( read X ) LIT [ &pxPlus8 $1 ] SWP SUB ( spriteX = px + 8 - X )
-                    DUP #08 LTH ,&xVisible JCN POP POP2 ;&nextSprite JMP2 ( not visible based on width )
-                    &xVisible ,&spriteX STR ( write ahead )
-                  INC ( advance to tileID )
-                  LDA2 STH2 ( read tileID, attr and move to rst )
+                  LDAkr ( read X/terminator )
+                  DUPr LITr ff EQUr LIT2r =&endOfTable JCN2r ( check for table terminator )
+                  LITr [ &pxPlus8 $1 ] SWPr SUBr ( spriteX = px + 8 - X )
+                    DUPr LITr 08 LTHr LITr _&xVisible JCNr
+                      POPr INC2r INC2r INC2r INC2r LITr _&spriteLoop JMPr ( not visible based on width, advance to next entry )
+                    &xVisible
 
-                  LIT [ &spriteY $1 ]
-                  ( yOffset = ( spriteY ^ 7|0 ) * 2 )
-                  LIT [ &spriteYXOR $1 ] STHkr #40 AND ,&vFlip JCN POP #00 &vFlip EOR #10 SFT ,&ySprOffset STR
+                  LITr _&X STRr ( push X ahead )
 
-                  LIT [ &spriteX $1 ]
+                  ( wst: )
+                  ( rst: oamScanTable* )
+
+                  INC2r LDAkr STHr ( read tileHighByte, move to wst )
+                  INC2r LDAkr STHr ( read tileLowByte, move to wst )
+                  INC2r LDAkr ( read attr )
+
+                  ( wst: tileHighByte tileLowByte  )
+                  ( rst: oamScanTable* attr )
+
                   ( xOffset = ( spriteX ^ 0|7 ) )
-                  #00 STHkr #20 AND ,&hFlip JCN POP #07 &hFlip EOR ,&xSprOffset STR
+                  LITr 00 OVRr LITr 20 ANDr LITr _&hFlip JCNr POPr LITr 07 &hFlip ( get 0 or 7 to EOR X with based on attr byte )
+                  LITr [ &X $1 ] EORr ( X is STR'd here earlier )
+                  STHkr ( copy xOffset to wst )
+                  SWP ( get xOffset into place for high byte )
+                  STHr ( move xOffset into place for low byte )
 
-                  ( wst: #a0 lowAddr spriteX )
-                  ( rst: tileID attr )
-
-                  LIT2 00 [ &ySprOffset $1 ]
-
-                  SWPr ( swap tileID/attr on rst )
-                  #00 STHr ( setup tileID as short )
-                  LIT [ &tileIDMask $1 ] AND ( clear bit0 for 8x16 mode )
-                  #40 SFT2 ( * 16 )
-                  #8000 ADD2 ( add tile data base addr )
-                  ADD2 ( yOffset + addr to get addr of sprite tile data )
-
-                  LDAk STH ( get tile low byte, move to rst )
-                  INC2 LDA ( get tile high byte )
-
-                  LIT [ &xSprOffset $1 ] STHk ( copy xOffset to rst )
+                  ( wst: tileHighByte xOffset tileLowByte xOffset )
+                  ( rst: oamScanTable* attr )
 
                   ( px color = ( high >> xOffset ) % 2 * 2 + ( low >> xOffset ) % 2 )
                   SFT #01 AND #10 SFT ( high bit )
-                  STH2r ( recover low byte and xOffset from rst )
+                  ROT ROT
                   SFT #01 AND ( low bit )
                   ADD ( final sprite pixel color! )
 
-                  ( wst: px bgPxColor #a0 lowAddr sprPxColor )
-                  ( rst: attr )
+                  ( wst: #a0 px bgPxColor sprPxColor )
+                  ( rst: oamScanTable* attr )
 
                   ( decide if we should show the bg/win or sprite pixel color )
-                  DUP #00 NEQ ,&sprPxOpaque JCN ( sprPx transparent, don't draw ) POP POPr ,&nextSprite JMP
+                  DUP #00 NEQ ,&sprPxOpaque JCN ( sprPx transparent, don't draw ) POP POPr INC2r ,&spriteLoop JMP
                   &sprPxOpaque
                     STHkr ( copy attr ) #80 AND ( check sprite's BG priority bit ) #00 NEQ ,&checkBgPxColor JCN
                       ( no BG priority, draw sprite )
-                      NIP2 NIP ( discard bgPxColor+#a0, lowaddr )
+                      NIP ( discard bgPxColor )
                     &handleSprPalette
                       #48 ( lowAddr of OBP0 )
                       STHr ( recover attr byte )
@@ -604,19 +659,19 @@ JMP2r
                       ,&palettes JMP ( jump to draw this sprite pixel )
                     &checkBgPxColor
                     ( check if BG color 1-3 )
-                    STH ( move sprPxColor to rst ) ROTk NIP NIP ( get copy of bgPxColor )
-                    #00 EQU ,&showSprPx JCN ( BG has priority and is color 1-3, skip this sprite ) POP2r ,&nextSprite JMP
+                    STH ( move sprPxColor to rst ) DUP ( get copy of bgPxColor )
+                    #00 EQU ,&showSprPx JCN ( BG has priority and is color 1-3, skip this sprite ) POP2r INC2r ;&spriteLoop JMP2
                     &showSprPx
-                      POP2 POP ( discard #a0 lowAddr, bgPxColor )
+                      POP ( discard bgPxColor )
                       STHr ( recover sprPxColor from rst )
                       ,&handleSprPalette JMP
 
-                  &nextSprite
-                  INC GTHk ;&spriteLoop JCN2
-                POP2
+                &endOfTable
+                POPr ( discard X/terminator )
 
                 ( apply palette to final pixel color )
                 &palettes
+                POP2r ( discard oamScanTable* )
 
                 #10 SFT ( color * 2 = shift count )
                 #ff ;pxPaletteAddr LDA ( get palette addr )
@@ -731,7 +786,7 @@ BRK
 @bgwinTileDataHigh $1
 
 @filepath $40
-@default-gb "cpu_instrs.gb $1
+@default-gb "test_roms\cpu_instrs.gb $1
 @savepath $40
 @saveExtension "sav $1
 @bankPath "_bank @bankPathDigit "A.sav $1
@@ -870,5 +925,11 @@ JMP2r
 @theme
     &path ".theme $1
     &data [ &r $2 &g $2 &b $2 ]
+
+( Note: This table is intentionally aligned such that the 41st entry will have a low byte of 0, 
+  to help in detecting when it has been filled with 10 entries. There's likely a better way to do
+  this, and a way to ensure we don't clobber it by accident. There might even be a sneaky place to
+  store it to minimize waste. )
+|fcd8 @oamScanTable $29 ( [ xCoord tileHighByte tileLowByte attr ] * 10, plus terminator )
 
 ( Note: This must end before fdff to avoid overflowing into Game Boy address space )
