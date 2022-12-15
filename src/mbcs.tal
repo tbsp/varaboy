@@ -15,6 +15,11 @@
 @SRAMBankCounts [ 00 00 01 04 10 08 ]
 
 @MBCNone
+  ( Dummy MBC write (2000-3fff) TODO: Check full banking address range )
+  DUP2 #f000 AND2 #2000 NEQ2 ,&notROMWrite JCN
+    POP2 POP ( some games, like Tetris 1.1, perform dummy ROM writes. Ignore them. )
+    JMP2r
+  &notROMWrite
   STA
 JMP2r
 
