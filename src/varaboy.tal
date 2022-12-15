@@ -335,7 +335,7 @@ JMP2r
 
     READ8PC ( get opcode at PC, PC++ )
 
-      #cb NEQk NIP ;&no-Prefix JCN2
+      #cb NEQk NIP ,&no-Prefix JCN
         ( Prefix instructions )
         POP READ8PC ( get opcode at PC, PC++ )
         DUP #c0 AND ,&bitResSet JCN
