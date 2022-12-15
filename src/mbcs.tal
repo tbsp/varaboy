@@ -15,8 +15,8 @@
 @SRAMBankCounts [ 00 00 01 04 10 08 ]
 
 @MBCNone
-  ( Dummy MBC write (2000-3fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 #2000 NEQ2 ,&notROMWrite JCN
+  ( Dummy MBC write (2000-3fff) )
+  OVR #e0 AND #20 NEQ ,&notROMWrite JCN
     POP2 POP ( some games, like Tetris 1.1, perform dummy ROM writes. Ignore them. )
     JMP2r
   &notROMWrite
@@ -28,9 +28,11 @@ JMP2r
 
 @MBC1Handler
 
-  ( ROM bank number (2000-3fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 #2000 NEQ2 ,&notROMBank JCN
-    POP2 ( discard addr )
+  OVR #e0 AND ( isolate MBC high bits )
+
+  ( ROM bank number (2000-3fff) )
+  DUP #20 NEQ ,&notROMBank JCN
+    POP POP2 ( discard MBC high bits and addr )
     DUP #00 NEQ ,&notBank0 JCN INC &notBank0 ( 0 -> bank 1 )
     INC ( increment counter target )
 
@@ -48,9 +50,9 @@ JMP2r
     JMP2r
   &notROMBank
 
-  ( RAM enable (0000-1fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 ORA ,&notRAMEnable JCN
-    POP2 ( discard addr )
+  ( RAM enable (0000-1fff) )
+  DUP #00 NEQ ,&notRAMEnable JCN
+    POP POP2 ( discard MBC high bits and addr )
     #0f AND #0a EQU ,&enableRAM JCN
       ( disable RAM )
       #00 ;MBCRegs/RAMEnable STA
@@ -61,9 +63,9 @@ JMP2r
       ;MBCRegs/RAMBank LDA ,&activateRAMBank JMP ( ensure the current RAM bank's data is loaded )
   &notRAMEnable
 
-  ( RAM bank number (4000-5fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 #4000 NEQ2 ,&notRAMBank JCN
-    POP2 ( discard addr )
+  ( RAM bank number (4000-5fff) )
+  DUP #40 NEQ ,&notRAMBank JCN
+    POP POP2 ( discard MBC high bits and addr )
 
     DUP ;MBCRegs/RAMBank STA ( write new bank number )
     ;MBCRegs/RAMEnable LDA ,&ramEnabled JCN
@@ -104,6 +106,7 @@ JMP2r
 
   ( Banking mode select (6000-7fff) )
 
+  POP ( discard MBC high bits )
   STA
 JMP2r
 
@@ -116,9 +119,12 @@ JMP2r
 JMP2r
 
 @MBC3Handler
-  ( ROM bank number (2000-3fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 #2000 NEQ2 ,&notROMBank JCN
-    POP2 ( discard addr )
+
+  OVR #e0 AND ( isolate MBC high bits )
+
+  ( ROM bank number (2000-3fff) )
+  DUP #20 NEQ ,&notROMBank JCN
+    POP POP2 ( discard MBC high bits and addr )
     DUP #00 NEQ ,&notBank0 JCN INC &notBank0 ( 0 -> bank 1 )
     INC ( increment counter target )
 
@@ -136,9 +142,9 @@ JMP2r
     JMP2r
   &notROMBank
 
-  ( RAM enable (0000-1fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 ORA ,&notRAMEnable JCN
-    POP2 ( discard addr )
+  ( RAM enable (0000-1fff) )
+  DUP #00 NEQ ,&notRAMEnable JCN
+    POP POP2 ( discard MBC high bits and addr )
     #0f AND #0a EQU ,&enableRAM JCN
       ( disable RAM )
       #00 ;MBCRegs/RAMEnable STA
@@ -149,9 +155,9 @@ JMP2r
       ;MBCRegs/RAMBank LDA ,&activateRAMBank JMP ( ensure the current RAM bank's data is loaded )
   &notRAMEnable
 
-  ( RAM bank number (4000-5fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 #4000 NEQ2 ,&notRAMBank JCN
-    POP2 ( discard addr )
+  ( RAM bank number (4000-5fff) )
+  DUP #40 NEQ ,&notRAMBank JCN
+    POP POP2 ( discard MBC high bits and addr )
 
     ( check for RTC register select )
     DUP #07 GTH ,&RTCSelect JCN
@@ -197,6 +203,7 @@ JMP2r
 
   ( Banking mode select (6000-7fff) )
 
+  POP ( discard MBC high bits )
   STA
 JMP2r
 
@@ -205,9 +212,11 @@ JMP2r
     that it doesn't re-direct ROM banks of 0 to 1. Due to how we copy the
     handlers into echo RAM, code isn't reused between the two )
 
-  ( ROM bank number (2000-3fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 #2000 NEQ2 ,&notROMBank JCN
-    POP2 ( discard addr )
+  OVR #e0 AND ( isolate MBC high bits )
+
+  ( ROM bank number (2000-3fff) )
+  DUP #20 NEQ ,&notROMBank JCN
+    POP POP2 ( discard MBC high bits and addr )
     INC ( increment counter target )
 
     ( since we can't seek, we read 16KB at a time into the ROM1
@@ -224,9 +233,9 @@ JMP2r
     JMP2r
   &notROMBank
 
-  ( RAM enable (0000-1fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 ORA ,&notRAMEnable JCN
-    POP2 ( discard addr )
+  ( RAM enable (0000-1fff) )
+  DUP #00 NEQ ,&notRAMEnable JCN
+    POP POP2 ( discard MBC high bits and addr )
     #0f AND #0a EQU ,&enableRAM JCN
       ( disable RAM )
       #00 ;MBCRegs/RAMEnable STA
@@ -237,9 +246,9 @@ JMP2r
       ;MBCRegs/RAMBank LDA ,&activateRAMBank JMP ( ensure the current RAM bank's data is loaded )
   &notRAMEnable
 
-  ( RAM bank number (4000-5fff) TODO: Check full banking address range )
-  DUP2 #f000 AND2 #4000 NEQ2 ,&notRAMBank JCN
-    POP2 ( discard addr )
+  ( RAM bank number (4000-5fff) )
+  DUP #40 NEQ ,&notRAMBank JCN
+    POP POP2 ( discard MBC high bits and addr )
 
     DUP ;MBCRegs/RAMBank STA ( write new bank number )
     ;MBCRegs/RAMEnable LDA ,&ramEnabled JCN
@@ -277,6 +286,7 @@ JMP2r
   &notSRAMWrite )
 
   ( Banking mode select (6000-7fff) )
-
+  
+  POP ( discard MBC high bits )
   STA
 JMP2r
