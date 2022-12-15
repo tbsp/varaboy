@@ -35,7 +35,7 @@ Note: Since [uxngb](https://github.com/tbsp/uxngb) (my UXN VM written for Game B
 ## Screenshots
 
 ![cpu_instrs](https://user-images.githubusercontent.com/10489588/206598200-41defefa-eca2-4bd9-82ec-38a91720051f.png)
-![dmg_acid2](https://user-images.githubusercontent.com/10489588/206787383-e8560e41-8bd5-411e-a122-65590a3451d3.png)
+![dmg_acid2](https://user-images.githubusercontent.com/10489588/207223870-f3335790-c1af-494b-85d8-e8b3e4454f33.png)
 ![sml](https://user-images.githubusercontent.com/10489588/206598205-648f7803-ef93-48bf-941c-fd6364377f26.png)
 ![tetris](https://user-images.githubusercontent.com/10489588/206598212-73f4ea28-b395-48c3-8b4e-1f3fa53ce066.png)
 ![megaman](https://user-images.githubusercontent.com/10489588/206598220-17d24d65-aad9-40ff-99aa-296304af2537.png)
@@ -84,9 +84,9 @@ Note that this means we don't have access to the UXN zero page, which contains t
 
 ## Performance
 
-This emulator is *very slow*. On a Ryzen 5600X running in [uxnemu](https://sr.ht/~rabbits/uxn/) some games could almost be considered playable with a frameskip setting of 3 or so. Emulation speed in [uxn32](https://github.com/randrew/uxn32) is quite a bit slower, making it very hard to get inputs to register at all (perhaps due to differences in how vectors are handled). A i5-540M with a frameskip of 9 isn't close to playable. Performance on the Nintendo DS UXN VM is even worse, which isn't surprising.
+This emulator performs fairly well on a modern computer. On a Ryzen 5600X running in [uxnemu](https://sr.ht/~rabbits/uxn/) most games are playable with no frameskip. Emulation speed in [uxn32](https://github.com/randrew/uxn32) is quite a bit slower, making it very hard to get inputs to register at all (perhaps due to differences in how vectors are handled). A i5-540M with a frameskip of 3 could be considered playable for some games, but action games are pushing it. Performance on the Nintendo DS UXN VM is even worse, which isn't surprising.
 
-I've sped up instruction dispatch by using jump tables, which in certain cases "wastes" as much as 126 bytes for the ~64 "ld r8,r8" instructions, but overall I believe the performance gain is worth it. I've also tried to pre-calculate as much as possible in the PPU scanline renderer to reduce redundant calculations as I'm not considering mid-scanline register writes. Background/window tiles are cached for reuse for up to 8 pixels, which provides a slight performance gain, though the presence of that code also slows things down a bit, so the net gain isn't huge. In addition, several common operations (ticks, reads, etc) have been converted to macros for speed over size, though the gains are minor.
+I've sped up instruction dispatch by using jump tables, which in certain cases "wastes" as much as 126 bytes for the ~64 "ld r8,r8" instructions, but overall I believe the performance gain is worth it. I've also tried to pre-calculate as much as possible in the PPU scanline renderer to reduce redundant calculations as I'm not considering mid-scanline register writes. Background/window tiles are cached for reuse for up to 8 pixels, which provides a slight performance gain, though the presence of that code also slows things down a bit, so the net gain isn't huge. In addition, several common operations (ticks, reads, etc) have been converted to macros for speed over size, though the gains are minor. The initial release had a very inefficient OAM scan approach, which has since been resolved.
 
 Save files are unpacked into a file per bank on startup for faster access during SRAM banking. The individual bank files are repacked on shutdown if you quit by pressing the Escape key. Quitting by closing the VM any other way will not properly write SRAM contents back to the SAV file. Without file seeking, games which use lots of ROM banks (and bank often) could also suffer a notable performance hit which could be reduced by unpacking ROM banks in a similar manner.
 
@@ -99,6 +99,6 @@ In addition, I'm still very new at writing uxntal, so there are likely a whole b
 
 - Passes [blargg's cpu_instrs tests](https://github.com/retrio/gb-test-roms)
 - Fails [blargg's instr_timing test](https://github.com/retrio/gb-test-roms), possibly due to a flawed timer implementation which mis-measures instruction timing
-- Passes most of Matt Currie's [dmg-acid2](https://github.com/mattcurrie/dmg-acid2), except for sprite x priority and 10 spr/line limit (which are not implemented)
+- Passes most of Matt Currie's [dmg-acid2](https://github.com/mattcurrie/dmg-acid2), except for sprite x priority (which is not implemented)
 - Fails most other test ROMs
 - Still manages to run a surprising number of commercial/homebrew games, despite the above!
