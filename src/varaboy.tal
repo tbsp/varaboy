@@ -44,6 +44,7 @@
 %TICK { ;cycles LDA2k #0004 ADD2 SWP2 STA2 }
 %TICK2 { ;cycles LDA2k #0008 ADD2 SWP2 STA2 }
 %POPSHORT { ;reg8/SPhigh READ16 }
+%CHECK-FLAG { DUP #e018 ROT AND LDA2 ;reg8/F LDA AND EQU }
 
 ~src/mmap.tal
 
@@ -194,6 +195,11 @@ BRK
 ( We jump from the uxn entry point $0100 to echo RAM, and operate the emulator from 
   entirely within echo RAM. This allows the Game Boy addresses to remain unmodified, I hope! )
 |e000 ( ends at fdff, 1dff[7679] bytes )
+( The flag table includes the mask and expected value for the 4 conditional instruction
+  options. It's page aligned to speed up check-flag and spaced out so we can use the masked
+  portion of the instructions directly without shifting. )
+@flag-table [ 00 80 $6 80 80 $6 00 10 $6 10 10 ]
+
 @varaboy
   
   ;filepath .File0/name DEO2

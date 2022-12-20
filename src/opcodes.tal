@@ -51,9 +51,6 @@
 
 (
 @|sm83utility )
-@flag-mask [ 80 80 10 10 ] ( NZ Z NC C )
-@flag-equals [ 00 80 00 10 ]
-
 @TACShiftLookup [ $4 ( pad front of table to 'ignore' timer enable bit, to speed up table seek ) ]
                 [ 02 40 20 00 ]
 
@@ -69,23 +66,11 @@
   TICK2 ( extra ticks for 2 writes )
 JMP2r
 
-@check-flag ( condition -- flag-equal )
-  ( TODO: There HAS to be a faster way to check if one of two bits is set or not... find it! )
-  STH2k ( duplicate offset on rst )
-  ;flag-mask ADD2 LDA ( get flag mask for our flag )
-  ;reg8/F LDA ( get current flags )
-  AND ( and flag and mask byte )
-  STH2r ( recover flag offset )
-  ;flag-equals ADD2 LDA ( get flag equals byte )
-  EQU ( compare masked flag byte to flag equals byte )
-JMP2r
-
 (
 @|sm83opcodes )
 
 @do-JPcu16 ( instr -- instr )
-  DUP #18 AND #03 SFT #00 SWP ( setup flag offset on wst )
-  ,check-flag JSR
+  CHECK-FLAG
   ,&flag-match JCN READ16PC ( advance PC past u16 ) POP2 ( discard u16 ) JMP2r &flag-match
   ( fall through to do-JPu16 )
 
@@ -96,8 +81,7 @@ JMP2r
 JMP2r
 
 @do-JRc ( instr -- instr )
-  DUP #18 AND #03 SFT #00 SWP ( setup flag offset on wst )
-  ,check-flag JSR
+  CHECK-FLAG
   ,&flag-match JCN READ8PC ( advance PC past u8 ) POP ( discard u8 ) JMP2r &flag-match
   ( fall through to JR )
 
@@ -111,8 +95,7 @@ JMP2r
 JMP2r
 
 @do-CALLcu16 ( instr -- instr )
-  DUP #18 AND #03 SFT #00 SWP ( setup flag offset on wst )
-  ;check-flag JSR2
+  CHECK-FLAG
   ,&flag-match JCN READ16PC ( advance PC past u16 ) POP2 ( discard u16 ) JMP2r &flag-match
   ( fall through to do-CALLu16 )
 
@@ -138,8 +121,7 @@ JMP2r
 JMP2r
 
 @do-RETc ( instr -- instr )
-  DUP #18 AND #03 SFT #00 SWP ( setup flag offset on wst )
-  ;check-flag JSR2
+  CHECK-FLAG
   TICK ( extra tick )
   ,&flag-match JCN JMP2r &flag-match
   ( fall through to RET )
