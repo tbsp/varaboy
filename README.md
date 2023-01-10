@@ -83,7 +83,7 @@ Note that unless otherwise noted, only a few minutes of testing per game was per
 | [Libbet](https://github.com/pinobatch/libbet) (Homebrew) | Playable |
 | [Geometrix](https://github.com/AntonioND/geometrix) (Homebrew) | Playable |
 | [Sam Mallard](https://snorpung.itch.io/sam-mallard-gb) (Homebrew) | Hangs on startup |
-| [Quartet](https://makrill.itch.io/quartet) (Homebrew) | Works, but RNG doesn't work correctly |
+| [Quartet](https://makrill.itch.io/quartet) (Homebrew) | Works, but RNG doesn't function due to the unimplemented joypad interrupt |
 
 ## How it works
 
