@@ -83,7 +83,7 @@ Note that unless otherwise noted, only a few minutes of testing per game was per
 | [Libbet](https://github.com/pinobatch/libbet) (Homebrew) | Playable |
 | [Geometrix](https://github.com/AntonioND/geometrix) (Homebrew) | Playable |
 | [Sam Mallard](https://snorpung.itch.io/sam-mallard-gb) (Homebrew) | Hangs on startup |
-| [Quartet](https://makrill.itch.io/quartet) (Homebrew) | Works, but RNG doesn't work correctly |
+| [Quartet](https://makrill.itch.io/quartet) (Homebrew) | Works, but RNG doesn't function due to the unimplemented joypad interrupt |
 
 ## How it works
 
@@ -95,7 +95,7 @@ Note that this means we don't have access to the UXN zero page, which contains t
 
 ## Performance
 
-This emulator performs fairly well on a recent/fast CPU. On a Ryzen 5600X running in [uxnemu](https://sr.ht/~rabbits/uxn/) most games are playable with no frameskip. Emulation speed in [uxn32](https://github.com/randrew/uxn32) is quite a bit slower, making it very hard to get inputs to register at all (perhaps due to differences in how vectors are handled). A i5-540M with a frameskip of 3 could be considered playable for some games, but action games are pushing it. Performance on the Nintendo DS UXN VM is even slower, which isn't surprising.
+This emulator performs fairly well on a recent/fast CPU. On a Ryzen 5600X running in [uxnemu](https://sr.ht/~rabbits/uxn/) most games are playable with no frameskip. Emulation speed in [uxn32](https://github.com/randrew/uxn32) is slightly slower, though it's not clear why at this time. A i5-540M with a frameskip of 3 could be considered playable for some games, but action games are pushing it. Performance on the Nintendo DS UXN VM is even slower, which isn't surprising.
 
 I've sped up instruction dispatch by using jump tables, which in certain cases "wastes" as much as 126 bytes for the ~64 "ld r8,r8" instructions, but overall I believe the performance gain is worth it. I've also tried to pre-calculate as much as possible in the PPU scanline renderer to reduce redundant calculations as I'm not considering mid-scanline register writes. Background/window tiles are cached for reuse for up to 8 pixels, which provides a slight performance gain, though the presence of that code also slows things down a bit, so the net gain isn't huge. In addition, several common operations (ticks, reads, etc) have been converted to macros for speed over size, though the gains are minor. The initial release had a very inefficient OAM scan approach, which has since been resolved. I've also reworked the PPU mode advancement to only check a single PPU transition dot per mode, and to only check once per instruction, which speeds things up quite a bit and doesn't affect accuracy with a simple scanline renderer.
 
