@@ -463,8 +463,16 @@ BRK
 
   ( General write handlers regardless of MBC )
 
-  ( Joypad select )
-  DUP2 ;io/rP1 NEQ2 ,&notJoypad JCN
+  ( Quick check for base register writes )
+  ( e6 is HIGH(reg8), and all registers must be on the same page )
+  ( Note: No measurable performance gains for cpu_instrs test ROM, oddly )
+  OVR #e6 NEQ ,&notReg8 JCN STA JMP2r &notReg8
+
+  ( Quick down-select to I/O range )
+  OVR #ff NEQ ;MBCHandler JCN2
+
+  ( Joypad P1 select )
+  DUP #00 NEQ ,&notJoypad JCN
     POP2 ( discard addr )
     #30 AND ( clear old low nibble of rP1 )
     DUP #20 NEQ ,&notAction JCN
@@ -483,7 +491,7 @@ BRK
   &notJoypad
 
   ( OAM DMA )
-  DUP2 ;io/rDMA NEQ2 ,&notOAMDMA JCN
+  DUP #46 NEQ ,&notOAMDMA JCN
     POP2 ( discard addr )
     STH ( move high byte to rst )
     #a000 ( copy 160 bytes )
@@ -499,7 +507,7 @@ BRK
   &notOAMDMA
 
   ( DIV reset )
-  DUP2 ;io/rDIV NEQ2 ,&notDIV JCN
+  DUP #04 NEQ ,&notDIV JCN
     POP2 POP ( discard all inputs )
     #0000 ;io/rDIVlow STA2k ( reset entire counter )
     POP2 ;timerShort STA2 ( also reset timerShort duplicate counter )
@@ -507,7 +515,7 @@ BRK
   &notDIV
 
   ( TIMA duplicate write to internal timer tracker )
-  DUP2 ;io/rTIMA NEQ2 ,&notTIMA JCN
+  DUP #05 NEQ ,&notTIMA JCN
     STAk ( carry out actual write )
     POP2 ( discard target addr )
     ;timerShort STA ( duplicate write to shadow byte, leaving low byte untouched )
@@ -515,7 +523,7 @@ BRK
   &notTIMA
 
   ( IF is a 5 bit register, so always set the top 3 bits )
-  DUP2 ;io/rIF NEQ2 ,&notIF JCN
+  DUP #0f NEQ ,&notIF JCN
     ROT #e0 ORA ( set top 3 bits )
     ROT ROT STA ( write )
     JMP2r
