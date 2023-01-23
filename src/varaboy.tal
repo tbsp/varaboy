@@ -18,7 +18,7 @@
 
 ( stdin vs hardcoded filepath )
 %READFILE { ;on-console .Console/vector DEO2 }
-%xREADFILE { ;default-gb ;filepath ;scpy JSR2 ;start JMP2 } ( Note: Switch to this READFILE when using uxn32 to debug )
+%xREADFILE { ;default-gb ;filepath scpy !start } ( Note: Switch to this READFILE when using uxn32 to debug )
 
 ( release macros )
 %INIT { ;on-frame .Screen/vector DEO2 ;on-button .Controller/vector DEO2 }
@@ -27,7 +27,7 @@
 
 ( cli debug macros )
 ( Note: Switch to this set of macros when using uxncli to dump register trace logs )
-%xINIT { ;on-frame JMP2 }
+%xINIT { !on-frame }
 %xVBLANK { ,&afterModeChange JMP }
 %xPRINTSTATE { ;print-state JSR2 }
 
@@ -58,7 +58,7 @@
   #fc40 .System/r DEO2
   #fc40 .System/g DEO2
   #fc40 .System/b DEO2
-  ;load-theme JSR2
+  load-theme
 
 	( size )
   #00a0 .Screen/width DEO2
@@ -74,22 +74,22 @@ BRK
   ( read source )
   .Console/read DEI
   DUP #20 LTH OVR #7f GTH ORA ,&end JCN
-  STH2kr ;slen JSR2 #003f GTH2 ,&end JCN
-    STH2r ;sput JSR2 BRK
+  STH2kr slen #003f GTH2 ,&end JCN
+    STH2r sput BRK
     &end
   POP
 
-  STH2r ;start JSR2
+  STH2r start
 
 BRK
 
 @start ( src* -- )
 
   ( build .sav version of filename for SRAM, even if not battery backed )
-  ;filepath ;savepath STH2k ;scpy JSR2 ( copy filepath to savepath )
+  ;filepath ;savepath STH2k scpy ( copy filepath to savepath )
   ;saveExtension ( source for .sav extension )
-  STH2kr ;slen JSR2 #02 SUB STH2kr ADD2 ( get addr of start of extension, assuming 2 letter (gb) extension )
-  ;scpy JSR2 ( copy sav extension over gb )
+  STH2kr slen #02 SUB STH2kr ADD2 ( get addr of start of extension, assuming 2 letter (gb) extension )
+  scpy ( copy sav extension over gb )
   STH2r .File1/name DEO2
 
   ( Detect MBC type and copy handler to @MBCHandler )
@@ -170,10 +170,10 @@ BRK
 
   #ff ;bgwinMaskedXOffset STA ( reset bgwinMaskedXOffset to ensure fresh data on the next scanline )
 
-  ;varaboy JMP2 ( jump to program code )
+  !varaboy ( jump to program code )
 
 &unsupportedMBC
-  ;msg-unsupportedMBC ;pstr JSR2
+  ;msg-unsupportedMBC pstr
   HALT
 
 @msg-unsupportedMBC
@@ -321,7 +321,7 @@ JMP2r
             ROT ROT STA ( store new rIF value )
           #00 ;IME STA ( clear IME )
           ;cycles LDA2k #0008 ADD2 SWP2 STA2 ( cycles += 8 )
-          ;PC LDA2 SWP ;pushShort JSR2 ( push PC )
+          ;PC LDA2 SWP pushShort ( push PC )
           #00 STHkr #30 SFT #40 ADD ( calculate handler address )
           ;PC STA2 ( set PC to interrupt handler location )
           POP ( cleanup wst )
@@ -331,7 +331,7 @@ JMP2r
 
     PRINTSTATE
 
-    ;halt LDA ,&do-halt JCN ,&do-instr JMP &do-halt TICK2 ;&handleCycles JMP2 ( halt )
+    ;halt LDA ,&do-halt JCN ,&do-instr JMP &do-halt TICK2 !&handleCycles ( halt )
 
     &do-instr
 
@@ -347,12 +347,12 @@ JMP2r
           ( shifts/rotates )
           #00 OVR #02 SFT #0e AND ;shiftRotateJumpTable ADD2 LDA2 ( obtain jump table addr )
           JSR2 ( call handler )
-          ;&doneInstr JMP2
+          !&doneInstr
 
         &bitResSet
           #00 OVR #05 SFT #06 AND ;bitResSetJumpTable ADD2 LDA2 ( obtain jump table addr )
           JSR2 ( call handler )
-          ;&doneInstr JMP2
+          !&doneInstr
       &no-Prefix
 
       #00 OVR #10 SFT2 ;instrJumpTable ADD2 LDA2 ( obtain jump table addr )
@@ -407,7 +407,7 @@ JMP2r
     &doneModeCycle
     POP2 ;prevCycles STA2 ( set prevCycles == cycles, as we've caught up )
     
-    ;&loop JMP2
+    !&loop
 
   HALT
 BRK
@@ -449,7 +449,7 @@ BRK
 @bgwinTileDataHigh $1
 
 @filepath $40
-@default-gb "other\fruitpursuit.gb $1
+@default-gb "test_roms/cpu_instrs.gb $1
 @savepath $40
 @saveExtension "sav $1
 @bankPath "_bank @bankPathDigit "A.sav $1
@@ -469,7 +469,7 @@ BRK
   OVR #e6 NEQ ,&notReg8 JCN STA JMP2r &notReg8
 
   ( Quick down-select to I/O range )
-  OVR #ff NEQ ;MBCHandler JCN2
+  OVR #ff NEQ ?MBCHandler
 
   ( Joypad P1 select )
   DUP #00 NEQ ,&notJoypad JCN
@@ -535,12 +535,12 @@ BRK
 (
 @uxnUtility )
 @print-state ( -- )
-  ;str-BC ;pstr JSR2 ;reg8/B LDA ;print-hex JSR2 ;reg8/C LDA ;print-hex JSR2
-  ;str-DE ;pstr JSR2 ;reg8/D LDA ;print-hex JSR2 ;reg8/E LDA ;print-hex JSR2
-  ;str-HL ;pstr JSR2 ;reg8/H LDA ;print-hex JSR2 ;reg8/L LDA ;print-hex JSR2
-  ;str-AF ;pstr JSR2 ;reg8/A LDA ;print-hex JSR2 ;reg8/F LDA ;print-hex JSR2
-  ;str-SP ;pstr JSR2 ;reg8/SPhigh LDA ;print-hex JSR2 ;reg8/SPlow LDA ;print-hex JSR2
-  ;str-PC ;pstr JSR2 ;PC/high LDA ;print-hex JSR2 ;PC/low LDA ;print-hex JSR2
+  ;str-BC pstr ;reg8/B LDA print-hex ;reg8/C LDA print-hex
+  ;str-DE pstr ;reg8/D LDA print-hex ;reg8/E LDA print-hex
+  ;str-HL pstr ;reg8/H LDA print-hex ;reg8/L LDA print-hex
+  ;str-AF pstr ;reg8/A LDA print-hex ;reg8/F LDA print-hex
+  ;str-SP pstr ;reg8/SPhigh LDA print-hex ;reg8/SPlow LDA print-hex
+  ;str-PC pstr ;PC/high LDA print-hex ;PC/low LDA print-hex
   ( ;str-LY ;pstr JSR2 ;io/rLY LDA ;print-hex JSR2
   ;str-dot ;pstr JSR2 ;ppuDot/high LDA ;print-hex JSR2 ;ppuDot/low LDA ;print-hex JSR2
   ;str-stat ;pstr JSR2 ;io/rSTAT LDA ;print-hex JSR2
