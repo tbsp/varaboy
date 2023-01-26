@@ -23,15 +23,6 @@
 
   ( perform rendering of this scanline now, since we don't want changes to LCDC/etc during hblank to affect this line )
 
-  ( draw scanline )
-  #00 ;io/rLY LDA .Screen/y DEO2 ( set varvara Y coordinate )
-  #0000 .Screen/x DEO2 ( set varvara X coordinate )
-  #01 .Screen/auto DEO ( set varvara auto X )
-
-  ( TODO: See if writing 8 scanlines progressively to a buffer of 2bpp tiles in UXN RAM and then using
-    two 10-tile Screen/sprite calls is faster than this per-pixel drawing. Though uxnemu seems faster
-    than uxn32 in this regard, so it might depend on the host VM. )
-
   LIT2r =oamScanTable ( setup pointer to store sprites for this scanline )
   #02 ;io/rLCDC LDA AND #00 EQU ;&skipOAMScan JCN2 ( check if sprites are enabled )
 
@@ -293,11 +284,43 @@
     LDA ( get palette value )
     SWP ( swap color/shift )
     SFT ( shift palette to get color in bit 0-1 )
-    #03 AND ( mask off extra bits )
+    ( #03 AND ( mask off extra bits ) )
 
-    #80 ADD ( enable 2bpp mode )
-    .Screen/pixel DEO ( draw pixel, at last! )
+    ( wst: #a0 px pxColor )
 
+    STHk ( stash for high bit )
+    #01 AND ( isolate low bit )
+    OVR #07 AND #07 EOR #40 SFT DUP ,&shiftValue STR ( get shift offset for bit: (px & 7) ^ 7, copy for high bit below )
+    #01 OVR SFT #ff EOR DUP ,&invMask0 STR ,&invMask1 STR ( initial mask bit, duplicate shift byte, shift mask bit, invert mask, push ahead )
+    SFT ( shift bit into position )
+    ;buffPtr LDA2 LDA ( get pending low buffer byte )
+    LIT [ &invMask0 $1 ] AND ( clear bit from existing byte )
+    ORA ( combine old and new bits )
+    ;buffPtr LDA2 STA ( store updated buffer byte )
+
+    ( DUPr LITr 00 EQUr LITr _&noColor JCNr
+      DBG
+    &noColor )
+
+    ( repeat for high bit )
+    STHr ( recover pixel color )
+    #02 AND #01 SFT ( isolate high bit )
+    LIT [ &shiftValue $1 ] SFT ( shift bit into position )
+    ;buffPtr LDA2 #0008 ADD2 LDA ( get pending high buffer byte )
+    LIT [ &invMask1 $1 ] AND ( clear bit from existing byte )
+    ORA ( combine old and new bits )
+    ;buffPtr LDA2 #0008 ADD2 STA ( store updated buffer byte )
+
+    ( advance buffer addr to next tile if at final pixel )
+    DUP #07 AND #07 NEQ ,&noBufferAdvance JCN
+      ;buffPtr LDA2k #0010 ADD2 SWP2 STA2
+      ( ;tileBuffer #0008 ADD2 LDA #00 EQU ,&noBufferData JCN
+        DBG
+      &noBufferData )
+    &noBufferAdvance
+
+    ( #80 ADD ( enable 2bpp mode )
+    .Screen/pixel DEO ( draw pixel, at last! ) )
   INC GTHk ;&pxLoop JCN2
   POP2 ( discard pixel counter )
 
@@ -305,6 +328,7 @@
 
 @vblankScanlineDone
   POP POP2 ( discard STAT value and addr )
+  ;io/rLY LDAk ( get current LY )
   ,scanlineDone/doneModeAdvance JMP
 
 @scanlineDone
@@ -314,8 +338,23 @@
     ;io/rIF LDAk #02 ORA ROT ROT STA ( request STAT OAM interrupt if enabled )
   &noStatOAM
 
+  ;io/rLY LDAk ( get current LY )
+  DUP #07 AND #07 NEQ ,&noBufferDraw JCN
+    ( Push buffered tile data to screen )
+    ;tileBuffer DUP2 ;buffPtr STA2 .Screen/addr DEO2 ( reset buffer pointer, set tile addr )
+    #00 OVR #f8 AND STH2k .Screen/y DEO2 ( set varvara Y coordinate )
+    #0000 .Screen/x DEO2 ( set varvara X coordinate )
+    #96 .Screen/auto DEO ( set varvara auto Y+addr, length 10-1 )
+    #81 .Screen/sprite DEOk ( draw first 10 tiles )
+    STH2r .Screen/y DEO2 ( set varvara Y coordinate )
+    #0050 .Screen/x DEO2 ( set varvara X coordinate )
+    DEO ( draw second 10 tiles )
+    ,&doneModeAdvance JMP
+  &noBufferDraw
+    ;buffPtr LDA2k #013f SUB2 SWP2 STA2 ( point to start of next row of tile pixels )
+
   &doneModeAdvance
-  ;io/rLY LDAk ( get current LY ) INC ( increment LY )
+  INC ( increment LY )
 
   ;io/rSTAT LDA #40 AND #00 EQU ,&noStatLYC JCN 
     DUP ;io/rLYC LDA NEQ ,&lyNEQlyc JCN
@@ -351,3 +390,7 @@
   &notVblankStart
 
 ;on-frame/doneModeCycle JMP2
+
+( Buffer to store 20 2bpp tiles before they're written to the screen in two .Screen/sprite DEOs )
+@buffPtr $2
+@tileBuffer $140

@@ -170,6 +170,8 @@ BRK
 
   #ff ;bgwinMaskedXOffset STA ( reset bgwinMaskedXOffset to ensure fresh data on the next scanline )
 
+  ;tileBuffer #013f ADD2 ;buffPtr STA2 ( initialize tile buffer pointer, knowing it'll have 0x013f subtracted very soon )
+
   ;varaboy JMP2 ( jump to program code )
 
 &unsupportedMBC
@@ -464,9 +466,9 @@ BRK
   ( General write handlers regardless of MBC )
 
   ( Quick check for base register writes )
-  ( e6 is HIGH(reg8), and all registers must be on the same page )
+  ( e8 is HIGH(reg8), and all registers must be on the same page )
   ( Note: No measurable performance gains for cpu_instrs test ROM, oddly )
-  OVR #e6 NEQ ,&notReg8 JCN STA JMP2r &notReg8
+  OVR #e8 NEQ ,&notReg8 JCN STA JMP2r &notReg8
 
   ( Quick down-select to I/O range )
   OVR #ff NEQ ;MBCHandler JCN2
@@ -533,7 +535,7 @@ BRK
 @MBCHandler $100 ( reserve space for MBC handler to be copied to )
 
 (
-@uxnUtility )
+@|uxnUtility )
 @print-state ( -- )
   ;str-BC ;pstr JSR2 ;reg8/B LDA ;print-hex JSR2 ;reg8/C LDA ;print-hex JSR2
   ;str-DE ;pstr JSR2 ;reg8/D LDA ;print-hex JSR2 ;reg8/E LDA ;print-hex JSR2
