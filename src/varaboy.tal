@@ -170,6 +170,8 @@ BRK
 
   #ff ;bgwinMaskedXOffset STA ( reset bgwinMaskedXOffset to ensure fresh data on the next scanline )
 
+  #01 .Screen/auto DEO ( set varvara auto X, which will never change )
+
   ;varaboy JMP2 ( jump to program code )
 
 &unsupportedMBC
