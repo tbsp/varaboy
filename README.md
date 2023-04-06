@@ -101,8 +101,7 @@ I've sped up instruction dispatch by using jump tables, which in certain cases "
 
 Save files are unpacked into a file per bank on startup for faster access during SRAM banking. The individual bank files are repacked on shutdown if you quit by pressing the Escape key. Quitting by closing the VM any other way will not properly write SRAM contents back to the SAV file. Without file seeking, games which use lots of ROM banks (and bank often) could also suffer a notable performance hit which could be reduced by unpacking ROM banks in a similar manner.
 
-The only "big" idea I have to speed things up right now is:
-- Write 8 full rows of pixels to a buffer of 20 2bpp UXN tiles and draw them to screen with two .Screen/sprite (auto) writes instead of 1280 .Screen/pixel writes. It's unclear if the extra VM instructions to juggle the buffering would be worth the reduction in .Screen calls though, and the benefits may vary by VM implementation.
+The only "big" idea I have to speed things up right now is to ~write 8 full rows of pixels to a buffer of 20 2bpp UXN tiles and draw them to screen with two .Screen/sprite (auto) writes instead of 1280 .Screen/pixel writes. It's unclear if the extra VM instructions to juggle the buffering would be worth the reduction in .Screen calls though, and the benefits may vary by VM implementation.~ I've tried this in the sprite-ppu branch and my current attempt runs slower than the .Screen/pixel approach.
 
 In addition, I'm still very new at writing uxntal, so there are likely a whole bunch of smart optimizations which could be done to speed things up. Anything that could speed up the main CPU and PPU loops would likely yield huge speed benefits.
 
