@@ -812,10 +812,7 @@ JMP2r
 @do-SWAP ( instr -- instr )
   DUP #07 AND GETSET-R8-ADDR ( get r8 )
   LDAk ( read r8 value )
-  DUP #04 SFT ( get new low nibble )
-  SWP
-  #40 SFT ( get new high nibble )
-  ORA ( combine nibbles )
+  DUP #40 SFT2 POP ( d_m's clever swap trick )
   STHk ROT ROT ;write8 JSR2 ( store new value in r8 )
   STHr
   #00 EQU #70 SFT ( Z flag )
