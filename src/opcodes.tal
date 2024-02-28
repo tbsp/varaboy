@@ -6,32 +6,31 @@
 =do-LDu16SP  =do-ADDHLr16 =do-LDAr16  =do-DECr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-RRCA
 =do-STOP     =do-LDr16u16 =do-LDr16A  =do-INCr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-RLA
 =do-JR       =do-ADDHLr16 =do-LDAr16  =do-DECr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-RRA
-        
+
 =do-JRc      =do-LDr16u16 =do-LDr16A  =do-INCr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-DAA
 =do-JRc      =do-ADDHLr16 =do-LDAr16  =do-DECr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-CPL
-=do-JRc      =do-LDr16u16 =do-LDr16A  =do-INCr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-SCF
+=do-JRc      =do-LDr16u16 =do-LDr16A  =do-INCr16  =do-INCHL    =do-DECHL    =do-LDHLu8 =do-SCF
 =do-JRc      =do-ADDHLr16 =do-LDAr16  =do-DECr16  =do-INCr8    =do-DECr8    =do-LDr8u8 =do-CCF
   
-( TODO: Is it worth not using a table for these almost 64 instructions? )  
-=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
-=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
-=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
-=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8HL =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8HL =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8HL =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8HL =do-LDr8r8
      
-=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
-=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
-=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-HALT   =do-LDr8r8
-=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8r8 =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8HL =do-LDr8r8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8HL =do-LDr8r8
+=do-LDHLr8   =do-LDHLr8   =do-LDHLr8  =do-LDHLr8  =do-LDHLr8   =do-LDHLr8   =do-HALT   =do-LDHLr8
+=do-LDr8r8   =do-LDr8r8   =do-LDr8r8  =do-LDr8r8  =do-LDr8r8   =do-LDr8r8   =do-LDr8HL =do-LDr8r8
   
-=do-ADDr8    =do-ADDr8    =do-ADDr8   =do-ADDr8   =do-ADDr8    =do-ADDr8   =do-ADDr8   =do-ADDr8
-=do-ADCr8    =do-ADCr8    =do-ADCr8   =do-ADCr8   =do-ADCr8    =do-ADCr8   =do-ADCr8   =do-ADCr8
-=do-SUBr8    =do-SUBr8    =do-SUBr8   =do-SUBr8   =do-SUBr8    =do-SUBr8   =do-SUBr8   =do-SUBr8
-=do-SBCr8    =do-SBCr8    =do-SBCr8   =do-SBCr8   =do-SBCr8    =do-SBCr8   =do-SBCr8   =do-SBCr8
+=do-ADDr8    =do-ADDr8    =do-ADDr8   =do-ADDr8   =do-ADDr8    =do-ADDr8   =do-ADDHL   =do-ADDr8
+=do-ADCr8    =do-ADCr8    =do-ADCr8   =do-ADCr8   =do-ADCr8    =do-ADCr8   =do-ADCHL   =do-ADCr8
+=do-SUBr8    =do-SUBr8    =do-SUBr8   =do-SUBr8   =do-SUBr8    =do-SUBr8   =do-SUBHL   =do-SUBr8
+=do-SBCr8    =do-SBCr8    =do-SBCr8   =do-SBCr8   =do-SBCr8    =do-SBCr8   =do-SBCHL   =do-SBCr8
   
-=do-ANDr8    =do-ANDr8    =do-ANDr8   =do-ANDr8   =do-ANDr8    =do-ANDr8   =do-ANDr8   =do-ANDr8
-=do-XORr8    =do-XORr8    =do-XORr8   =do-XORr8   =do-XORr8    =do-XORr8   =do-XORr8   =do-XORr8
-=do-ORr8     =do-ORr8     =do-ORr8    =do-ORr8    =do-ORr8     =do-ORr8    =do-ORr8    =do-ORr8
-=do-CPr8     =do-CPr8     =do-CPr8    =do-CPr8    =do-CPr8     =do-CPr8    =do-CPr8    =do-CPr8
+=do-ANDr8    =do-ANDr8    =do-ANDr8   =do-ANDr8   =do-ANDr8    =do-ANDr8   =do-ANDHL   =do-ANDr8
+=do-XORr8    =do-XORr8    =do-XORr8   =do-XORr8   =do-XORr8    =do-XORr8   =do-XORHL   =do-XORr8
+=do-ORr8     =do-ORr8     =do-ORr8    =do-ORr8    =do-ORr8     =do-ORr8    =do-ORHL    =do-ORr8
+=do-CPr8     =do-CPr8     =do-CPr8    =do-CPr8    =do-CPr8     =do-CPr8    =do-CPHL    =do-CPr8
  
 =do-RETc     =do-POPr16   =do-JPcu16  =do-JPu16   =do-CALLcu16 =do-PUSHr16 =do-ADDu8   =do-RST
 =do-RETc     =do-RET      =do-JPcu16  =do-INVALID =do-CALLcu16 =do-CALLu16 =do-ADCu8   =do-RST
@@ -170,16 +169,35 @@ JMP2r
   TICK ( extra tick )
 JMP2r
 
-@do-LDr8u8 ( instr -- instr )
-  DUP #38 AND #03 SFT GET-R8-ADDR STH2 ( stash target addr )
+@do-LDHLu8 ( instr -- instr )
+  ;reg8/H LDA2 TICK
+  STH2 ( stash target addr )
   READ8PC ( read u8 )
   STH2r !write8 ( .. ) ( recover target addr and write value )
 
-@do-LDr8r8 ( instr -- instr )
-  DUP #38 AND #03 SFT GET-R8-ADDR STH2 ( stash target addr )
-  DUP #07 AND GET-R8-ADDR_2
-  LDA ( read source r8 )
+@do-LDr8u8 ( instr -- instr )
+  DUP #38 AND #03 SFT 
+  #00 SWP ;reg8 ADD2
+  STH2 ( stash target addr )
+  READ8PC ( read u8 )
+  STH2r STA JMP2r ( recover target addr and write value )
+
+@do-LDHLr8 ( instr -- instr )
+  ;reg8/H LDA2 TICK STH2 ( stash target addr )
+  DUP #07 AND #00 SWP ;reg8 ADD2 LDA ( read source r8 )
   STH2r !write8 ( .. ) ( recover target addr and write value )
+
+@do-LDr8HL ( instr -- instr )
+  DUP #38 AND #03 SFT #00 SWP ;reg8 ADD2 STH2 ( stash target addr )
+  ;reg8/H LDA2 TICK LDA ( read source r8 )
+  STH2r STA JMP2r ( recover target addr and write value )
+
+@do-LDr8r8 ( instr -- instr )
+  DUP #38 AND #03 SFT #00 SWP ;reg8 ADD2
+  STH2 ( stash target addr )
+  DUP #07 AND #00 SWP ;reg8 ADD2
+  LDA ( read source r8 )
+  STH2r STA JMP2r ( .. ) ( recover target addr and write value )
 
 @do-LDSPHL ( instr -- instr )
   ;reg8/H LDA2
@@ -311,11 +329,16 @@ JMP2r
 
   !do-ADDSPi8/complete
 
-@do-INCr8 ( instr -- instr )
-  DUP #38 AND #03 SFT GETSET-R8-ADDR
-  LDAk [ STHk ] INC STHk ROT ROT
-  write8
+@do-INCHL ( instr -- instr )
+  ;reg8/H LDA2 TICK
+  LDAk [ STHk ] INC STHk ROT ROT write8
+  !do-INCr8/complete
 
+@do-INCr8 ( instr -- instr )
+  DUP #38 AND #03 SFT #00 SWP ;reg8 ADD2
+  LDAk [ STHk ] INC STHk ROT ROT
+  STA
+&complete
   ;reg8/F LDAk ( load old flags )
   #10 AND ( retain old carry flag )
   STHr ( recover new register value )
@@ -325,10 +348,15 @@ JMP2r
   ROT ROT STA ( z 0 h - )
 JMP2r
 
-@do-DECr8 ( instr -- instr )
-  DUP #38 AND #03 SFT GETSET-R8-ADDR
+@do-DECHL ( instr -- instr )
+  ;reg8/H LDA2 TICK
   LDAk [ STHk ] #01 SUB STHk ROT ROT write8
+  !do-DECr8/complete
 
+@do-DECr8 ( instr -- instr )
+  DUP #38 AND #03 SFT #00 SWP ;reg8 ADD2
+  LDAk [ STHk ] #01 SUB STHk ROT ROT STA
+&complete
   ;reg8/F LDAk
   #10 AND ( retain c )
   STHr ( recover new value )
@@ -394,8 +422,10 @@ JMP2r
   READ8PC ( read u8 )
   !do-ADDr8/do-ADD
 
+@do-ADDHL ( instr -- instr )
+  ;reg8/H LDA2 TICK LDA !do-ADDr8/do-ADD
 @do-ADDr8 ( instr -- instr )
-  DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
+  DUP #07 AND #00 SWP ;reg8 ADD2 LDA
 &do-ADD
   #00 SWP ( convert arg to short )
   #00 ;reg8/A LDA ( read A as short )
@@ -418,8 +448,10 @@ JMP2r
   READ8PC ( read u8 )
   !do-ADCr8/do-ADC
 
+@do-ADCHL ( instr -- instr )
+  ;reg8/H LDA2 TICK LDA !do-ADCr8/do-ADC
 @do-ADCr8 ( instr -- instr )
-  DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
+  DUP #07 AND #00 SWP ;reg8 ADD2 LDA
 &do-ADC
   #00 SWP ( convert arg to short )
   #00 ;reg8/A LDA ( read A as short )
@@ -445,8 +477,10 @@ JMP2r
   READ8PC ( read u8 )
   !do-SUBr8/do-SUB
 
+@do-SUBHL ( instr -- instr )
+  ;reg8/H LDA2 TICK LDA !do-SUBr8/do-SUB
 @do-SUBr8 ( instr -- instr )
-  DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
+  DUP #07 AND #00 SWP ;reg8 ADD2 LDA
 &do-SUB
   ;reg8/A LDA ( read A )
   SWP ( swap r8/u8 and A for correct subtraction order )
@@ -468,8 +502,10 @@ JMP2r
   READ8PC ( read u8 )
   !do-SBCr8/do-SBC
 
+@do-SBCHL ( instr -- instr )
+  ;reg8/H LDA2 TICK LDA !do-SBCr8/do-SBC
 @do-SBCr8 ( instr -- instr )
-  DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
+  DUP #07 AND #00 SWP ;reg8 ADD2 LDA
 &do-SBC
   #00 SWP ( convert arg to short )
   #00 ;reg8/A LDA ( read A as short )
@@ -498,8 +534,10 @@ JMP2r
   READ8PC ( read u8 )
   !do-CPr8/do-CP
 
+@do-CPHL ( instr -- instr )
+  ;reg8/H LDA2 TICK LDA !do-CPr8/do-CP
 @do-CPr8 ( instr -- instr )
-  DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
+  DUP #07 AND #00 SWP ;reg8 ADD2 LDA
 &do-CP
   ;reg8/A LDA ( read A )
   SWP ( swap r8/u8 and A for correct 'subtraction' order )
@@ -519,8 +557,10 @@ JMP2r
   READ8PC ( read u8 )
   !do-ANDr8/do-AND
 
+@do-ANDHL ( instr -- instr )
+  ;reg8/H LDA2 TICK LDA !do-ANDr8/do-AND
 @do-ANDr8 ( instr -- instr )
-  DUP #07 AND GET-R8-ADDR LDA
+  DUP #07 AND #00 SWP ;reg8 ADD2 LDA
 &do-AND
   ;reg8/A LDA ( read A )
   AND
@@ -535,8 +575,10 @@ JMP2r
   READ8PC ( read u8 )
   !do-XORr8/do-XOR
 
+@do-XORHL ( instr -- instr )
+  ;reg8/H LDA2 TICK LDA !do-XORr8/do-XOR
 @do-XORr8 ( instr -- instr )
-  DUP #07 AND GET-R8-ADDR LDA
+  DUP #07 AND #00 SWP ;reg8 ADD2 LDA
 &do-XOR
   ;reg8/A LDA ( read A )
   EOR
@@ -550,8 +592,10 @@ JMP2r
   READ8PC ( read u8 )
   !do-ORr8/do-OR
 
+@do-ORHL ( instr -- instr )
+  ;reg8/H LDA2 TICK LDA !do-ORr8/do-OR
 @do-ORr8 ( instr -- instr )
-  DUP #07 AND GET-R8-ADDR LDA
+  DUP #07 AND #00 SWP ;reg8 ADD2 LDA
 &do-OR
   ;reg8/A LDA ( read A )
   ORA
