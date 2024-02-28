@@ -290,7 +290,6 @@
     SFT ( shift palette to get color in bit 0-1 )
     #03 AND ( mask off extra bits )
 
-    #80 ADD ( enable 2bpp mode )
     .Screen/pixel DEO ( draw pixel, at last! )
 
   INC GTHk ?&pxLoop
