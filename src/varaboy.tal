@@ -38,7 +38,6 @@
 %READ16 { [ LDA2k INC2k INC2 ROT2 STA2 ] LDA2 SWP TICK2 }
 %READ16PC { ;PC READ16 }
 %GET-R8-ADDR { [ DUP #06 NEQ ?&simpleR8 [ POP ;reg8/H LDA2 TICK ] ] !&r8ready &simpleR8 #00 SWP ;reg8 ADD2 &r8ready }
-%GET-R8-ADDR_2 { [ DUP #06 NEQ ?&simpleR8_2 [ POP ;reg8/H LDA2 TICK ] ] !&r8ready_2 &simpleR8_2 #00 SWP ;reg8 ADD2 &r8ready_2 } ( simple duplicate to allow second use in same instr handler )
 %GETSET-R8-ADDR { [ DUP #06 NEQ ?&simpleR8 [ POP ;reg8/H LDA2 TICK2 ] ] !&r8ready &simpleR8 #00 SWP ;reg8 ADD2 &r8ready } ( tick twice since [HL] will be written )
 %GET-R16-GROUP1-ADDR { DUP #30 AND #03 SFT [ DUP #06 NEQ ?&notSP INC INC &notSP ] #00 SWP ;reg8 ADD2 }
 %TICK { ;cycles LDA2k #0004 ADD2 SWP2 STA2 }
