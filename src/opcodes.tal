@@ -71,7 +71,7 @@ JMP2r
 
 @do-JPcu16 ( instr -- instr )
   CHECK-FLAG
-  ,&flag-match JCN READ16PC ( advance PC past u16 ) POP2 ( discard u16 ) JMP2r &flag-match
+  ?{ READ16PC ( advance PC past u16 ) POP2 ( discard u16 ) JMP2r }
   ( fall through to do-JPu16 )
 
 @do-JPu16 ( instr -- instr )
@@ -82,12 +82,12 @@ JMP2r
 
 @do-JRc ( instr -- instr )
   CHECK-FLAG
-  ,&flag-match JCN READ8PC ( advance PC past u8 ) POP ( discard u8 ) JMP2r &flag-match
+  ?{ READ8PC ( advance PC past u8 ) POP ( discard u8 ) JMP2r }
   ( fall through to JR )
 
 @do-JR ( instr -- instr )
   READ8PC ( read u8 )
-  #ff OVR #07 SFT ,&negative JCN POP #00 &negative SWP ( sign extension )
+  #ff OVR #07 SFT ?&negative POP #00 &negative SWP ( sign extension )
   ;PC LDA2 ( read current PC )
   ADD2 ( add offset )
   ;PC STA2 ( store new PC )
@@ -96,13 +96,13 @@ JMP2r
 
 @do-CALLcu16 ( instr -- instr )
   CHECK-FLAG
-  ,&flag-match JCN READ16PC ( advance PC past u16 ) POP2 ( discard u16 ) JMP2r &flag-match
+  ?{ READ16PC ( advance PC past u16 ) POP2 ( discard u16 ) JMP2r }
   ( fall through to do-CALLu16 )
 
 @do-CALLu16 ( instr -- instr )
   READ16PC
   ;PC LDA2 SWP
-  ;pushShort JSR2
+  pushShort
   ;PC STA2
   TICK ( extra tick )
 JMP2r
@@ -114,7 +114,7 @@ JMP2r
 
 @do-RST ( instr -- instr )
   ;PC LDA2 SWP
-  ;pushShort JSR2
+  pushShort
   DUP #38 AND #00 SWP
   ;PC STA2
   TICK ( extra tick )
@@ -123,7 +123,7 @@ JMP2r
 @do-RETc ( instr -- instr )
   CHECK-FLAG
   TICK ( extra tick )
-  ,&flag-match JCN JMP2r &flag-match
+  ?{ JMP2r }
   ( fall through to RET )
 
 @do-RET ( instr -- instr )
@@ -136,7 +136,7 @@ JMP2r
   POPSHORT
   ;PC STA2
   TICK
-  ;do-EI JMP2
+  !do-EI
 
 @do-LDr16u16 ( instr -- instr )
   GET-R16-GROUP1-ADDR STH2
@@ -173,15 +173,13 @@ JMP2r
 @do-LDr8u8 ( instr -- instr )
   DUP #38 AND #03 SFT GET-R8-ADDR STH2 ( stash target addr )
   READ8PC ( read u8 )
-  STH2r ;write8 ( .. ) ( recover target addr and write value )
-JMP2
+  STH2r !write8 ( .. ) ( recover target addr and write value )
 
 @do-LDr8r8 ( instr -- instr )
   DUP #38 AND #03 SFT GET-R8-ADDR STH2 ( stash target addr )
   DUP #07 AND GET-R8-ADDR_2
   LDA ( read source r8 )
-  STH2r ;write8 ( .. ) ( recover target addr and write value )
-JMP2
+  STH2r !write8 ( .. ) ( recover target addr and write value )
 
 @do-LDSPHL ( instr -- instr )
   ;reg8/H LDA2
@@ -192,7 +190,7 @@ JMP2r
 @do-LDu16A ( instr -- instr )
   ;reg8/A LDA ( read A )
   READ16PC ( read u16 )
-  ;write8 JSR2 ( store in RAM )
+  write8 ( store in RAM )
   TICK ( extra tick )
 JMP2r
 
@@ -206,7 +204,7 @@ JMP2r
 @do-LDHu8A ( instr -- instr )
   ;reg8/A LDA ( read A )
   #ff READ8PC ( $FF00 + read u8 )
-  ;write8 JSR2 ( store in HRAM )
+  write8 ( store in HRAM )
   TICK ( extra tick )
 JMP2r
 
@@ -220,7 +218,7 @@ JMP2r
 @do-LDHCA ( instr -- instr )
   ;reg8/A LDA ( read A )
   #ff ;reg8/C LDA ( $FF00 + read C )
-  ;write8 JSR2 ( store in HRAM )
+  write8 ( store in HRAM )
   TICK ( extra tick )
 JMP2r
 
@@ -234,7 +232,7 @@ JMP2r
 @do-LDAr16 ( instr -- instr )
   ( Note: The [r16] source options are: [bc], [de], [hli], [hld] )
   DUP #30 AND #03 SFT STHk
-    [ DUP #06 NEQ ,&notHLD JCN POP #04 &notHLD ] ( change HLD case to use HL as r16, change %11 to %10 )
+    [ DUP #06 NEQ ?{ POP #04 } ] ( change HLD case to use HL as r16, change %11 to %10 )
     #00 SWP ;reg8 ADD2 ( get addr of source r16 from instruction )
   LDA2 ( read address stored in r16 )
 
@@ -246,8 +244,8 @@ JMP2r
 
   ( check for hli/hld )
   STHr ( recover r16 argument )
-  DUP #04 EQU ,&hli JCN
-      #06 EQU ,&hld JCN
+  DUP #04 EQU ?&hli
+      #06 EQU ?&hld
   JMP2r
   &hli POP ;reg8/H LDA2k INC2 SWP2 STA2 JMP2r
   &hld ;reg8/H LDA2k #0001 SUB2 SWP2 STA2 JMP2r
@@ -256,30 +254,30 @@ JMP2r
   ( Note: The [r16] source options are: [bc], [de], [hli], [hld] )
 
   DUP #30 AND #03 SFT STHk
-    [ DUP #06 NEQ ,&notHLD JCN POP #04 &notHLD ] ( change HLD case to use HL as r16, change %11 to %10 )
+    [ DUP #06 NEQ ?{ POP #04 } ] ( change HLD case to use HL as r16, change %11 to %10 )
     #00 SWP ;reg8 ADD2 ( get addr of source r16 from instruction )
   LDA2 ( read address stored in r16 )
   
   ;reg8/A LDA ( read A )
   ROT ROT ( swap value/addr )
-  ;write8 JSR2 ( store in [r16] )
+  write8 ( store in [r16] )
 
-  ,do-LDAr16/hlihld JMP
+  !do-LDAr16/hlihld
 
 @do-LDu16SP ( instr -- instr )
   ;reg8/SPhigh LDA2 ( read SP )
   READ16PC ( read u16 )
   STH2k ( copy destination to rst )
-  ;write8 JSR2 ( write low byte )
+  write8 ( write low byte )
   STH2r INC2 ( recover desintation, increment )
-  ;write8 JSR2 ( write high byte )
+  write8 ( write high byte )
   TICK2 ( extra ticks )
 JMP2r
 
 @do-ADDSPi8 ( instr -- instr )
   ( Note: Test 03 is useful for verifying this )
   READ8PC ( read u8 )
-  #ff OVR #07 SFT ,&negative JCN POP #00 &negative SWP ( sign extension )
+  #ff OVR #07 SFT ?{ POP #00 } SWP ( sign extension )
   ;reg8/SPhigh LDA2 ( read current SP )
   ADD2k ( SP + i8 )
   ;reg8/SPhigh STA2 ( store new SP )
@@ -289,7 +287,7 @@ JMP2r
   &complete
   #00ff AND2 ( get lower byte of SP )
   OVR2 #00ff AND2 ( get lower byte of i8 )
-  ADD2k #00ff GTH2 STH ( stash C to rst )
+  ADD2k #00ff GTH2 STH ( stash C to rst, can't change #00ff GTH2 to OVR because we need a 01 result )
   NIP ( remove high byte of i8 )
   #0f AND ( get lower nibble of i8 )
   OVR #0f AND ( get lower nibble of SP )
@@ -307,16 +305,16 @@ JMP2r
 @do-LDHLSPi8 ( instr -- instr )
   ;reg8/SPhigh LDA2 ( read SP )
   READ8PC ( read i8 )
-  #ff OVR #07 SFT ,&negative JCN POP #00 &negative SWP ( sign extension )
+  #ff OVR #07 SFT ?{ POP #00 } SWP ( sign extension )
   ADD2k ( SP + i8 )
   ;reg8/H STA2 ( store result in HL )
 
-  ,do-ADDSPi8/complete JMP
+  !do-ADDSPi8/complete
 
 @do-INCr8 ( instr -- instr )
   DUP #38 AND #03 SFT GETSET-R8-ADDR
   LDAk [ STHk ] INC STHk ROT ROT
-  ;write8 JSR2
+  write8
 
   ;reg8/F LDAk ( load old flags )
   #10 AND ( retain old carry flag )
@@ -329,7 +327,7 @@ JMP2r
 
 @do-DECr8 ( instr -- instr )
   DUP #38 AND #03 SFT GETSET-R8-ADDR
-  LDAk [ STHk ] #01 SUB STHk ROT ROT ;write8 JSR2
+  LDAk [ STHk ] #01 SUB STHk ROT ROT write8
 
   ;reg8/F LDAk
   #10 AND ( retain c )
@@ -360,9 +358,9 @@ JMP2r
   LDA2 ( read register pair value )
 
   STHr ( recover r16 bit pair )
-  #06 EQU ,&AF JCN [ SWP ] &AF ( swap high/low bytes, except for AF )
+  #06 EQU ?{ SWP } ( swap high/low bytes, except for AF )
 
-  ;pushShort JSR2
+  pushShort
 
   TICK ( extra tick )
 JMP2r
@@ -375,7 +373,7 @@ JMP2r
   POPSHORT
 
   STHr ( recover r16 bits )
-  #06 NEQ ,&notAF JCN [ SWP ] #f0ff AND2 &notAF ( swap high/low bytes back for AF, and mask low nibble of F )
+  #06 NEQ ?{ SWP #f0ff AND2 } ( swap high/low bytes back for AF, and mask low nibble of F )
 
   SWP2 ( swap r16 addr and short )
   STA2 ( write popped value to r16 )
@@ -390,11 +388,11 @@ JMP2r
 JMP2r
 
 @do-STOP
-  ,do-STOP JMP
+  !do-STOP
 
 @do-ADDu8 ( instr -- instr )
   READ8PC ( read u8 )
-  ,do-ADDr8/do-ADD JMP
+  !do-ADDr8/do-ADD
 
 @do-ADDr8 ( instr -- instr )
   DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
@@ -418,7 +416,7 @@ JMP2r
 
 @do-ADCu8 ( instr -- instr )
   READ8PC ( read u8 )
-  ,do-ADCr8/do-ADC JMP
+  !do-ADCr8/do-ADC
 
 @do-ADCr8 ( instr -- instr )
   DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
@@ -445,7 +443,7 @@ JMP2r
 
 @do-SUBu8 ( instr -- instr )
   READ8PC ( read u8 )
-  ,do-SUBr8/do-SUB JMP
+  !do-SUBr8/do-SUB
 
 @do-SUBr8 ( instr -- instr )
   DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
@@ -456,7 +454,7 @@ JMP2r
 
   ;reg8/A STA ( store result in A )
   LTHk #40 SFT STH ( c to rst )
-  DUP2 SWP ( duplicate/swap inputs for half carry calculation )
+  SWPk ( duplicate/swap inputs for half carry calculation )
   #0f AND OVR #0f AND ( get lower nibble of both inputs )
   SUB #10 GTH #50 SFT STH POP ( h to rst )
   ORAr ( c|h )
@@ -468,7 +466,7 @@ JMP2r
 
 @do-SBCu8 ( instr -- instr )
   READ8PC ( read u8 )
-  ,do-SBCr8/do-SBC JMP
+  !do-SBCr8/do-SBC
 
 @do-SBCr8 ( instr -- instr )
   DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
@@ -498,7 +496,7 @@ JMP2r
 
 @do-CPu8 ( instr -- instr )
   READ8PC ( read u8 )
-  ,do-CPr8/do-CP JMP
+  !do-CPr8/do-CP
 
 @do-CPr8 ( instr -- instr )
   DUP #07 AND GET-R8-ADDR LDA ( get source of compare from instruction )
@@ -507,7 +505,7 @@ JMP2r
   SWP ( swap r8/u8 and A for correct 'subtraction' order )
 
   LTHk #40 SFT STH ( c to rst )
-  DUP2 SWP ( duplicate/swap inputs for half carry calculation )
+  SWPk ( duplicate/swap inputs for half carry calculation )
   #0f AND OVR #0f AND ( get lower nibble of both inputs )
   SUB #10 GTH #50 SFT STH POP ( h to rst )
   ORAr ( c|h )
@@ -519,7 +517,7 @@ JMP2r
 
 @do-ANDu8 ( instr -- instr )
   READ8PC ( read u8 )
-  ,do-ANDr8/do-AND JMP
+  !do-ANDr8/do-AND
 
 @do-ANDr8 ( instr -- instr )
   DUP #07 AND GET-R8-ADDR LDA
@@ -535,7 +533,7 @@ JMP2r
 
 @do-XORu8 ( instr -- instr )
   READ8PC ( read u8 )
-  ,do-XORr8/do-XOR JMP
+  !do-XORr8/do-XOR
 
 @do-XORr8 ( instr -- instr )
   DUP #07 AND GET-R8-ADDR LDA
@@ -550,14 +548,14 @@ JMP2r
 
 @do-ORu8 ( instr -- instr )
   READ8PC ( read u8 )
-  ,do-ORr8/do-OR JMP
+  !do-ORr8/do-OR
 
 @do-ORr8 ( instr -- instr )
   DUP #07 AND GET-R8-ADDR LDA
 &do-OR
   ;reg8/A LDA ( read A )
   ORA
-  ,do-XORr8/cleanup JMP
+  !do-XORr8/cleanup
 
 @do-RRA ( instr -- instr )
   ;reg8/A LDAk ( read A value )
@@ -615,16 +613,16 @@ JMP2r
   DUPr LITr 40 ANDr LITr 00 NEQr LITr _&afterSubtraction JCNr ( check N )
     ( after addition )
     DUPr LITr 10 ANDr LITr 00 NEQr LITr _&addOutOfBounds JCNr
-    DUP #9a LTH ,&addCheckH JCN
+    DUP #9a LTH ?&addCheckH
     &addOutOfBounds
       #60 ADD ( A += $60 )
       ;reg8/F LDAk #10 ORA ROT ROT STA ( set carry flag direct )
     &addCheckH
     DUPr LITr 20 ANDr LITr 00 NEQr LITr _&addHalfCarry JCNr
-    DUP #0f AND #0a LTH ,&cleanup JCN
+    DUP #0f AND #0a LTH ?&cleanup
     &addHalfCarry
       #06 ADD ( A += $06 )
-  ,&cleanup JMP
+  !&cleanup
   &afterSubtraction
     DUPr LITr 10 ANDr LITr 00 EQUr LITr _&subCheckH JCNr
       #60 SUB ( A -= $60 )
@@ -695,8 +693,7 @@ JMP2r
   STHr ( move value to wst )
   AND ( AND with inverted mask to clear bit )
   STH2r ( get addr from rst )
-  ;write8 ( .. ) ( store new value )
-JMP2
+  !write8 ( .. ) ( store new value )
 
 @do-SET ( instr -- instr )
   #01 ( initial bitmask )
@@ -708,8 +705,7 @@ JMP2
   STHr ( move value to wst )
   ORA ( ORA with mask to set bit )
   STH2r ( get addr from rst )
-  ;write8 ( .. ) ( store new value )
-JMP2
+  !write8 ( .. ) ( store new value )
 
 @do-RLC ( instr -- instr )
   DUP #07 AND GETSET-R8-ADDR ( get r8 )
@@ -719,7 +715,7 @@ JMP2
   OVR STH ( copy high byte and move to rst )
   ORA ( OR low/high bytes to put bit 7 into bit 0 )
   STHk ( copy result to rst )
-  ROT ROT ;write8 JSR2 ( store new value in r8 )
+  ROT ROT write8 ( store new value in r8 )
 
   STHr ( recover value from rst )
   #00 EQU #70 SFT ( z )
@@ -734,7 +730,7 @@ JMP2r
   STHk ( copy low byte to rst )
   ORA ( OR shifted bit 0 onto bit 7 )
   STHk ( copy result to rst )
-  ROT ROT ;write8 JSR2 ( store new value in r8 )
+  ROT ROT write8 ( store new value in r8 )
 
   STHr ( recover value from rst )
   #00 EQU #70 SFT ( z )
@@ -751,7 +747,7 @@ JMP2r
   ;reg8/F LDA #10 AND #04 SFT ( get carry flag in bit 0 )
   ORA ( OR carry flag into bit 0 )
   STHk ( copy result to rst )
-  ROT ROT ;write8 JSR2 ( store new value in r8 )
+  ROT ROT write8 ( store new value in r8 )
 
   STHr ( recover value from rst )
   #00 EQU #70 SFT ( z )
@@ -767,7 +763,7 @@ JMP2r
   ;reg8/F LDA #10 AND #30 SFT ( get carry flag in bit 7 )
   ORA ( OR carry flag into bit 7 )
   STHk ( copy result to rst )
-  ROT ROT ;write8 JSR2 ( store new value in r8 )
+  ROT ROT write8 ( store new value in r8 )
 
   STHr ( recover value from rst )
   #00 EQU #70 SFT ( z )
@@ -782,7 +778,7 @@ JMP2r
   #10 SFT2 ( shift into high byte )
   STH2k ( copy short to rst )
   NIP ( discard high byte )
-  ROT ROT ;write8 JSR2 ( store new value in r8 )
+  ROT ROT write8 ( store new value in r8 )
 
   STHr ( recover value from rst )
   #00 EQU #70 SFT ( z )
@@ -801,7 +797,7 @@ JMP2r
   STH ( move low byte to rst )
   ORA ( OR value and bit7 together )
   STHk ( copy result to rst )
-  ROT ROT ;write8 JSR2 ( store new value in r8 )
+  ROT ROT write8 ( store new value in r8 )
 
   STHr ( recover value from rst )
   #00 EQU #70 SFT ( z )
@@ -813,7 +809,7 @@ JMP2r
   DUP #07 AND GETSET-R8-ADDR ( get r8 )
   LDAk ( read r8 value )
   DUP #40 SFT2 POP ( d_m's clever swap trick )
-  STHk ROT ROT ;write8 JSR2 ( store new value in r8 )
+  STHk ROT ROT write8 ( store new value in r8 )
   STHr
   #00 EQU #70 SFT ( Z flag )
   ;reg8/F STA ( z 0 0 0 )
@@ -825,7 +821,7 @@ JMP2r
   #0001 SFT2 ( shift into low byte )
   STH ( move low byte to rst )
   STHk ( copy result to rst )
-  ROT ROT ;write8 JSR2 ( store new value in r8 )
+  ROT ROT write8 ( store new value in r8 )
   STHr ( recover value from rst )
   #00 EQU #70 SFT ( z )
   STHr #03 SFT ORA ( c )
@@ -840,7 +836,7 @@ JMP2r
 JMP2r
 
 @do-INVALID ( instr -- instr )
-  ;msg-invalidInstruction ;pstr JSR2
+  ;msg-invalidInstruction pstr
   HALT
 
 @msg-invalidInstruction

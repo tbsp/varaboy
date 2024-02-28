@@ -13,8 +13,8 @@
 (
 @|macros )
 %EMIT { .Console/write DEO }
-%HALT { #01 .System/state DEO }
-%DBG { #01 .System/debug DEO }
+%HALT { [ LIT2 01 -System/state ] DEO }
+%DBG { [ LIT2 01 -System/debug ] DEO }
 
 ( stdin vs hardcoded filepath )
 %READFILE { ;on-console .Console/vector DEO2 }
@@ -28,8 +28,8 @@
 ( cli debug macros )
 ( Note: Switch to this set of macros when using uxncli to dump register trace logs )
 %xINIT { !on-frame }
-%xVBLANK { ,&afterModeChange JMP }
-%xPRINTSTATE { ;print-state JSR2 }
+%xVBLANK { !&afterModeChange }
+%xPRINTSTATE { print-state }
 
 (
 @|opcodeMacros )
@@ -37,9 +37,9 @@
 ( TODO: binji notes that it's necessary to read8/pc++, then read8/pc++ again to avoid undefined behaviour. Do that? )
 %READ16 { [ LDA2k INC2k INC2 ROT2 STA2 ] LDA2 SWP TICK2 }
 %READ16PC { ;PC READ16 }
-%GET-R8-ADDR { [ DUP #06 NEQ ,&simpleR8 JCN [ POP ;reg8/H LDA2 TICK ] ] ,&r8ready JMP &simpleR8 #00 SWP ;reg8 ADD2 &r8ready }
-%GET-R8-ADDR_2 { [ DUP #06 NEQ ,&simpleR8_2 JCN [ POP ;reg8/H LDA2 TICK ] ] ,&r8ready_2 JMP &simpleR8_2 #00 SWP ;reg8 ADD2 &r8ready_2 } ( simple duplicate to allow second use in same instr handler )
-%GETSET-R8-ADDR { [ DUP #06 NEQ ,&simpleR8 JCN [ POP ;reg8/H LDA2 TICK2 ] ] ,&r8ready JMP &simpleR8 #00 SWP ;reg8 ADD2 &r8ready } ( tick twice since [HL] will be written )
+%GET-R8-ADDR { [ DUP #06 NEQ ?&simpleR8 [ POP ;reg8/H LDA2 TICK ] ] !&r8ready &simpleR8 #00 SWP ;reg8 ADD2 &r8ready }
+%GET-R8-ADDR_2 { [ DUP #06 NEQ ?&simpleR8_2 [ POP ;reg8/H LDA2 TICK ] ] !&r8ready_2 &simpleR8_2 #00 SWP ;reg8 ADD2 &r8ready_2 } ( simple duplicate to allow second use in same instr handler )
+%GETSET-R8-ADDR { [ DUP #06 NEQ ?&simpleR8 [ POP ;reg8/H LDA2 TICK2 ] ] !&r8ready &simpleR8 #00 SWP ;reg8 ADD2 &r8ready } ( tick twice since [HL] will be written )
 %GET-R16-GROUP1-ADDR { DUP #30 AND #03 SFT [ DUP #06 NEQ ,&notSP JCN INC INC &notSP ] #00 SWP ;reg8 ADD2 }
 %TICK { ;cycles LDA2k #0004 ADD2 SWP2 STA2 }
 %TICK2 { ;cycles LDA2k #0008 ADD2 SWP2 STA2 }
@@ -274,7 +274,6 @@ BRK
   ( ||+- ---- - Down     Left     )
   ( |+-- ---- - Left     Up       )
   ( +--- ---- - Right    Down     )
-
   .Controller/button DEI
 
   ( change high nibble from UDLR to RLUD )

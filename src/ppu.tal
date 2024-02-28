@@ -13,9 +13,9 @@
 !on-frame/doneModeCycle
 
 @renderScanline
-  DUP #08 AND #00 EQU ,&noStatHblank JCN 
+  DUP #08 AND #00 EQU ?{
     ;io/rIF LDAk #02 ORA ROT ROT STA ( request STAT hblank interrupt if enabled )
-  &noStatHblank
+  }
   #fc AND ( set STAT mode to HBlank [0], length not adjusted for sprites/etc )
   ROT ROT STA
 
@@ -38,7 +38,7 @@
       data to render each sprite on this line to the oamScanTable for use during rendering. )
     
     ( calculate sprite XOR value and height for visibility calculation, write ahead )
-    #0f04 ;io/rLCDC LDA AND ,&tallSprites JCN POP #07 &tallSprites
+    #0f04 ;io/rLCDC LDA AND ?{ POP #07 }
       DUP ,&spriteYXOR STR
       DUP #03 SFT #ff EOR ,&tileIDMask STR ( AND mask for bit0 of tileID for 8x16 sprites )
       INC ,&spriteHeight STR
@@ -51,7 +51,7 @@
 
       #fe OVR #20 SFT ( point to OAM entry )
       LDAk ( read Y ) LIT [ &lyPlus16 $1 ] SWP SUB ( spriteY = LY + 16 - Y ) 
-        DUP LIT [ &spriteHeight $1 ] LTH ,&yVisible JCN POP POP2 ,&nextSprite JMP ( not visible based on height )
+        DUP LIT [ &spriteHeight $1 ] LTH ?&yVisible POP POP2 !&nextSprite ( not visible based on height )
         &yVisible ,&spriteY STR ( write ahead )
 
       INC ( advance to X )
@@ -60,8 +60,8 @@
       LDA2 STH2 ( read tileID, attr and move to rst )
       DUPr LITr _&attr STRr ( push attr ahead for caching )
 
-      ( yOffset = ( spriteY ^ 7|0 ) * 2 )
-      LIT2 [  &spriteY $1 &spriteYXOR $1 ] STHr #40 AND ,&vFlip JCN POP #00 &vFlip EOR #10 SFT ,&ySprOffset STR
+      ( yOffset = [ spriteY ^ 7|0 ] * 2 )
+      LIT2 [  &spriteY $1 &spriteYXOR $1 ] STHr #40 AND ?{ POP #00 } EOR #10 SFT ,&ySprOffset STR
 
       ( wst: #28 lowAddr )
       ( rst: oamScanTable* X tileID )
@@ -94,7 +94,7 @@
       DUPr LITr 00 EQUr LITr _&reached10Sprites JCNr
 
     &nextSprite
-    INC GTHk ,&oamScanLoop JCN
+    INC GTHk ?&oamScanLoop
   &reached10Sprites
   POP2
 
@@ -107,12 +107,12 @@
     ;io/rLY LDA ;io/rWY LDA LTH ORA ( or LY < WY )
     ;io/rWX LDA #a6 GTH ORA ( or WX > 166 )
       DUP ,&isWinInactive STR ( then the window is inactive this scanline )
-      ,&skipWinVariables JCN
+      ?{
         ;io/rWX LDA ,&wx STR ( Can't pre-calculate WX-7 because WX values of 0-6 result in negative value, breaking the LTH check )
         ;WLY LDAk 
           DUP ,&WLY STR ( yOffset = WLY )
         INC ROT ROT STA ( increment WLY for the next scanline only when the window is active )
-      &skipWinVariables
+      }
   ;io/rLY LDA ;io/rSCY LDA ADD ,&lyPlusSCY STR ( yOffset = LY + SCY )
   #10 ;io/rLCDC LDA AND #10 EQU ;&isTileBlock0 STA ( are bg/win using tile block 0? )
 
@@ -124,15 +124,15 @@
 
     ( Is window active this scanline? )
     LIT2 [ &isWinInactive $1 _&drawBackground ] JCN
-      DUP #07 ADD LIT [ &wx $1 ] LTHk ,&notYetWindow JCN ( Is px + 7 >= WX? )
-        SUB ( xOffset = px - ( WX - 7 ) )
+      DUP #07 ADD LIT [ &wx $1 ] LTHk ?&notYetWindow ( Is px + 7 >= WX? )
+        SUB ( xOffset = px - [ WX - 7 ] )
         DUP ;&xOffset STA ( copy for later )
         #ff ;bgwinMaskedXOffset STA ( Invalidated xOffset cache to trigger tilemap/data fetch )
       LIT2 00 [ &WLY $1 ] ( yOffset = WLY )
         LIT2 40 _&lcdcTilemapMask STR
-      ,&readTilemap JMP
+      !&readTilemap
     &notYetWindow
-    POP2 ( discard px, ( WX - 7 ) )
+    POP2 ( discard px, [ WX - 7 ] )
 
     &drawBackground
     DUP ;io/rSCX LDA ADD ( xOffset = px + SCX )
@@ -165,19 +165,19 @@
       #00 SWP ( convert to short )
     #0006 ( setup for $9800 )
       LIT [ &lcdcTilemapMask $1 ] ;io/rLCDC LDA AND ( check LCDC tilemap bit )
-      #00 EQU ,&firstTilemap JCN INC &firstTilemap ( if tilemap bit set, increment base value )
+      #00 EQU ?{ INC } ( if tilemap bit set, increment base value )
     #a0 SFT2 #8000 ADD2 ( calculate tilemap base address, $9800 or $9c00, from $8000 + 6|7 << 10 )
 
     ADD2 ADD2 ( baseAddr + yOffset + xOffset = tilemap VRAM addr )
     LDA ,&tileID STR ( read tileID from tilemap, write ahead for seeking tile data )
 
-    ( #82 ;io/rLCDC LDA NEQ ,&noBRK JCN DBG &noBRK ( break on LCDC==#82 ) )
+    ( #82 ;io/rLCDC LDA NEQ ,&noBRK JCN DBG &noBRK [ break on LCDC==#82 ] )
 
     LIT2 00 [ &yOffset $1 ] #07 AND #10 SFT ( yOffset % 8 * 2 )
 
     LIT2 00 [ &tileID $1 ] ( setup tileID as short )
     LIT2 [ &isTileBlock0 $1 _&tileBlock0 ] JCN
-      #ff OVR #07 SFT ,&negativeTileID JCN POP #00 &negativeTileID OVR ( sign extension )
+      #ff OVR #07 SFT ?{ POP #00 } OVR ( sign extension )
       NIP2 ( discard entire original tileID -> TODO: find a way to consume it instead )
       #0100 ADD2 ( tileBlock1 ) 
     &tileBlock0
@@ -189,17 +189,16 @@
     LDAk STHk ;bgwinTileDataLow STA ( get tile low byte, move to rst and cache )
     INC2 LDA DUP ;bgwinTileDataHigh STA ( get tile high byte, copy to cache )
 
-    LIT [ &xOffset $1 ] #07 EORk AND NIP ( xOffset = ( xOffset ^ 7 ) & 7 )
+    LIT [ &xOffset $1 ] #07 EORk AND NIP ( xOffset = [ xOffset ^ 7 ] & 7 )
     STHk ( copy xOffset to rst )
 
     DUP #01 SUB ;bgwinMaskedXOffset STA ( cache masked xOffset to fast-track bg/win rendering for the next pixel )
 
     &resumeBgWinTileRender
 
-    ( px color = ( high >> xOffset ) % 2 * 2 + ( low >> xOffset ) % 2 )
+    ( px color = [ high >> xOffset ] % 2 * 2 + [ low >> xOffset ] % 2 )
     SFT #01 AND #10 SFT ( high bit )
-    STH2r ( recover low byte and xOffset from rst )
-    SFT #01 AND ( low bit )
+    SFTr STHr #01 AND ( calculate low bit from low byte and xOffset and recover from rst )
     ADD ( final bg/win pixel color! )
 
     #47 ;pxPaletteAddr STA ( default to bg/win palette )
@@ -236,7 +235,7 @@
       ( wst: tileHighByte tileLowByte  )
       ( rst: oamScanTable* attr )
 
-      ( xOffset = ( spriteX ^ 0|7 ) )
+      ( xOffset = [ spriteX ^ 0|7 ] )
       LITr 00 OVRr LITr 20 ANDr LITr _&hFlip JCNr POPr LITr 07 &hFlip ( get 0 or 7 to EOR X with based on attr byte )
       LITr [ &X $1 ] EORr ( X is STR'd here earlier )
       STHkr ( copy xOffset to wst )
@@ -246,7 +245,7 @@
       ( wst: tileHighByte xOffset tileLowByte xOffset )
       ( rst: oamScanTable* attr )
 
-      ( px color = ( high >> xOffset ) % 2 * 2 + ( low >> xOffset ) % 2 )
+      ( px color = [ high >> xOffset ] % 2 * 2 + [ low >> xOffset ] % 2 )
       SFT #01 AND #10 SFT ( high bit )
       ROT ROT
       SFT #01 AND ( low bit )
@@ -256,9 +255,8 @@
       ( rst: oamScanTable* attr )
 
       ( decide if we should show the bg/win or sprite pixel color )
-      DUP ,&sprPxOpaque JCN ( sprPx transparent, don't draw ) POP POPr INC2r ,&spriteLoop JMP
-      &sprPxOpaque
-        STHkr ( copy attr ) #80 AND ( check sprite's BG priority bit ) ,&checkBgPxColor JCN
+      DUP ?{ ( sprPx transparent, don't draw ) POP POPr INC2r !&spriteLoop }
+        STHkr ( copy attr ) #80 AND ( check sprite's BG priority bit ) ?&checkBgPxColor
           ( no BG priority, draw sprite )
           NIP ( discard bgPxColor )
         &handleSprPalette
@@ -266,15 +264,14 @@
           STHr ( recover attr byte )
           #10 AND #04 SFT ADD ( Add shifted palette bit onto lowAddr )
           ;pxPaletteAddr STA ( store for drawing )
-          ,&palettes JMP ( jump to draw this sprite pixel )
+          !&palettes ( jump to draw this sprite pixel )
         &checkBgPxColor
         ( check if BG color 1-3 )
         STH ( move sprPxColor to rst ) DUP ( get copy of bgPxColor )
-        #00 EQU ,&showSprPx JCN ( BG has priority and is color 1-3, skip this sprite ) POP2r INC2r !&spriteLoop
-        &showSprPx
+        #00 EQU ?{ ( BG has priority and is color 1-3, skip this sprite ) POP2r INC2r !&spriteLoop }
           POP ( discard bgPxColor )
           STHr ( recover sprPxColor from rst )
-          ,&handleSprPalette JMP
+          !&handleSprPalette
 
     &endOfTable
     POPr ( discard X/terminator )
@@ -299,47 +296,45 @@
 
 @vblankScanlineDone
   POP POP2 ( discard STAT value and addr )
-  ,scanlineDone/doneModeAdvance JMP
+  !scanlineDone/doneModeAdvance
 
 @scanlineDone
   ( for non-vblank scanlines, advance from hblank [0] to OAM search [2] )
   INC INC ROT ROT STAk POP2 ( set STAT mode to OAM search [2], mode 2 always follows 0, so INC INC works )
-  #20 AND #00 EQU ,&noStatOAM JCN 
+  #20 AND #00 EQU ?{
     ;io/rIF LDAk #02 ORA ROT ROT STA ( request STAT OAM interrupt if enabled )
-  &noStatOAM
+  }
 
   &doneModeAdvance
   ;io/rLY LDAk ( get current LY ) INC ( increment LY )
 
-  ;io/rSTAT LDA #40 AND #00 EQU ,&noStatLYC JCN 
-    DUP ;io/rLYC LDA NEQ ,&lyNEQlyc JCN
+  ;io/rSTAT LDA #40 AND #00 EQU ?&noStatLYC
+    DUP ;io/rLYC LDA NEQ ?&lyNEQlyc
       ;io/rIF LDAk #02 ORA ROT ROT STA ( request STAT LYC interrupt if enabled )
   &noStatLYC
   &lyNEQlyc
 
-  DUP #9a LTH ,&not-new-frame ( check if we're done VBlank )
-    JCN POP #00 ( reset to LY = 0 )
-    DUP ;WLY STA ( reset WLY for next frame )
+  DUP #9a LTH ?&not-new-frame ( check if we're done VBlank )
+    POP #0000 ( reset to LY = 0 )
+    ;WLY STA ( reset WLY for next frame )
     ;io/rSTAT LDAk #fc AND #02 ORA ROT ROT STA ( set STAT mode to OAM scan [2] )
   &not-new-frame
-  ROT ROT STA ( LY = (LY + 1) % 154 )
+  ROT ROT STA ( LY = [LY + 1] % 154 )
   ;ppuDot LDA2k #01c8 SUB2 SWP2 STA2 ( subtract a line of ppuDots off, since we allow overshooting )
   #ff ;bgwinMaskedXOffset STA ( reset bgwinMaskedXOffset for the next scanline )
 
-  ;io/rLY LDA #90 NEQ ,&notVblankStart JCN
+  ;io/rLY LDA #90 NEQ ?&notVblankStart
     #01 ( setup to enable VBlank IF flag up ahead )
     ;io/rSTAT LDAk #fc AND INC ROT ROT STAk POP2 ( set STAT mode to VBlank [1] )
-    #10 AND #00 EQU ,&noStatVBLANK JCN
+    #10 AND #00 EQU ?{
       INC INC ( increment prepared IF flag addition to include STAT VBlank interrupt )
-    &noStatVBLANK
+    }
     STH ;io/rIF LDAk STHr ORA ROT ROT STA ( set VBlank and possible STAT VBlank IF flags )
 
     ( update frameSkip state, TODO: Clean this up, it feels excessively complex )
     ;frameSkipCounter LDAk #01 SUB ( decrement counter )
     #00 NEQk NIP DUP ;renderScanline/skipThisFrame STA ( store skip boolean for next frame )
-    ,&skippingNext JCN
-      POP ;frameSkip LDA ( reset counter )
-    &skippingNext
+    ?{ POP ;frameSkip LDA ( reset counter ) }
     ROT ROT STA ( store new counter )
     VBLANK
   &notVblankStart
