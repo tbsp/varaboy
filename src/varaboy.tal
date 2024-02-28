@@ -40,7 +40,7 @@
 %GET-R8-ADDR { [ DUP #06 NEQ ?&simpleR8 [ POP ;reg8/H LDA2 TICK ] ] !&r8ready &simpleR8 #00 SWP ;reg8 ADD2 &r8ready }
 %GET-R8-ADDR_2 { [ DUP #06 NEQ ?&simpleR8_2 [ POP ;reg8/H LDA2 TICK ] ] !&r8ready_2 &simpleR8_2 #00 SWP ;reg8 ADD2 &r8ready_2 } ( simple duplicate to allow second use in same instr handler )
 %GETSET-R8-ADDR { [ DUP #06 NEQ ?&simpleR8 [ POP ;reg8/H LDA2 TICK2 ] ] !&r8ready &simpleR8 #00 SWP ;reg8 ADD2 &r8ready } ( tick twice since [HL] will be written )
-%GET-R16-GROUP1-ADDR { DUP #30 AND #03 SFT [ DUP #06 NEQ ,&notSP JCN INC INC &notSP ] #00 SWP ;reg8 ADD2 }
+%GET-R16-GROUP1-ADDR { DUP #30 AND #03 SFT [ DUP #06 NEQ ?&notSP INC INC &notSP ] #00 SWP ;reg8 ADD2 }
 %TICK { ;cycles LDA2k #0004 ADD2 SWP2 STA2 }
 %TICK2 { ;cycles LDA2k #0008 ADD2 SWP2 STA2 }
 %POPSHORT { ;reg8/SPhigh READ16 }
@@ -221,13 +221,13 @@ BRK
 
   ( keyboard controls )
   .Controller/key DEI
-    [ #1b ] NEQk NIP ,&no-esc JCN
+    [ #1b ] NEQk NIP ?&no-esc
       ( Cleanup SRAM )
       ( Note: Not currently MBC-specific! )
-      ;SRAMBanks LDA DUP #00 EQU ,&noSRAM JCN
+      ;SRAMBanks LDA DUP #00 EQU ?&noSRAM
         ;savepath .File1/name DEO2 ( open SAV file )
 
-        ;isSingleRAMBank LDA ,&saveSingleBank JCN
+        ;isSingleRAMBank LDA ?&saveSingleBank
           ( write current bank to its bank file )
           ;MBCRegs/RAMBank LDA ( get current bank number )
           #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
@@ -245,9 +245,9 @@ BRK
             ;bankPath .File0/name DEO2 ( set name for bank file )
             ;sram .File0/read DEO2k POP .File1/write DEO2 ( read from bank file to memory, write out to SAV file )
             #00 .File0/delete DEO ( delete bank file )
-          INC GTHk ,&packLoop JCN
+          INC GTHk ?&packLoop
           POP
-          ,&doneSRAMHandling JMP
+          !&doneSRAMHandling
         &saveSingleBank
           ;sram .File1/write DEO2 ( write out to bank file )
           #0000 .File1/name DEO2 ( close bank file )          
@@ -257,7 +257,7 @@ BRK
       HALT
       ( doesn't halt in uxn32 immediately? )
     &no-esc
-    DUP #2f GTH OVR #3a LTH #0101 NEQ2 ,&no-num JCN ;set-frameskip JSR2 &no-num
+    DUP #2f GTH OVR #3a LTH #0101 NEQ2 ?{ set-frameskip }
   POP
 
   ( update in-memory GB format joypad byte )
@@ -297,22 +297,23 @@ JMP2r
 
 @on-frame ( -- )
   ( begin CPU instruction execution )
+
   &loop
     ( check if halt should be ended )
     ;io/rIF LDA ;rIE LDA AND
-      STHk #00 EQU ,&skipInterrupts JCN
+      STHk #00 EQU ?&skipInterrupts
       #00 ;halt STA ( end halt blindly )
-    ;IME LDA #00 EQU ,&skipInterrupts JCN ( check if interrupts should be serviced )
+    ;IME LDA #00 EQU ?&skipInterrupts ( check if interrupts should be serviced )
       ( service any interrupts which have occurred, in priority order )
       STHr ( recover pending interrupt bits )
       LITr 00 ( interrupt counter on rst )
       &irqLoop
         #00 ( byte to shift flags into )
-        #01 SFT2 ,&serviceIRQ JCN ( shift next interrupt bit into lower byte, check if active )
+        #01 SFT2 ?&serviceIRQ ( shift next interrupt bit into lower byte, check if active )
         INCr ( increment interrupt counter )
-        DUP ,&irqLoop JCN ( loop as long as there are unhandled bits )
+        DUP ?&irqLoop ( loop as long as there are unhandled bits )
         POP ( cleanup wst )
-        ,&irqServiceDone JMP
+        !&irqServiceDone
         &serviceIRQ
           ( clear IF bit )
           ;io/rIF LDAk
@@ -332,7 +333,7 @@ JMP2r
 
     PRINTSTATE
 
-    ;halt LDA ,&do-halt JCN ,&do-instr JMP &do-halt TICK2 !&handleCycles ( halt )
+    ;halt LDA ?{ !&do-instr } TICK2 !&handleCycles ( halt )
 
     &do-instr
 
@@ -341,20 +342,19 @@ JMP2r
 
     READ8PC ( get opcode at PC, PC++ )
 
-      #cb NEQk NIP ,&no-Prefix JCN
+      #cb NEQk NIP ?{
         ( Prefix instructions )
         POP READ8PC ( get opcode at PC, PC++ )
-        DUP #c0 AND ,&bitResSet JCN
+        DUP #c0 AND ?{
           ( shifts/rotates )
           #00 OVR #02 SFT #0e AND ;shiftRotateJumpTable ADD2 LDA2 ( obtain jump table addr )
           JSR2 ( call handler )
           !&doneInstr
-
-        &bitResSet
-          #00 OVR #05 SFT #06 AND ;bitResSetJumpTable ADD2 LDA2 ( obtain jump table addr )
-          JSR2 ( call handler )
-          !&doneInstr
-      &no-Prefix
+        }
+        #00 OVR #05 SFT #06 AND ;bitResSetJumpTable ADD2 LDA2 ( obtain jump table addr )
+        JSR2 ( call handler )
+        !&doneInstr
+      }
 
       #00 OVR #10 SFT2 ;instrJumpTable ADD2 LDA2 ( obtain jump table addr )
       JSR2 ( call handler )
@@ -372,29 +372,29 @@ JMP2r
       just reference changes to the DIV counter, but I couldn't figure out how to implement the falling edge detector without 
       looping over each cycle change in DIV. )
     ;io/rTAC LDA
-      DUP #04 AND #00 EQU ,&timerDisabled JCN ( check if timer is enabled )
+      DUP #04 AND #00 EQU ?{ ( check if timer is enabled )
         #00 SWP ;TACShiftLookup ADD2 LDA ( get shift value for TAC setting )
         STH2kr ( recover cycle delta, leave on rst to balance stacks on exit )
         ROT SFT2 ( shift cycle delta by shift value based on TAC setting )
         ;timerShort LDA2 ( get current timerShort value )
         ADD2k ( add shifted delta, keep arguments to detect overflow )
-        LTH2k ,&noOverflow JCN ( check if prior value is smaller than the new value, in which case we didn't overflow )
+        LTH2k ?{ ( check if prior value is smaller than the new value, in which case we didn't overflow )
           ;io/rIF LDAk #04 ORA ROT ROT STA ( set Timer IF flag )
           NIP ( discard ADD2k result high byte )
           ;io/rTMA LDA SWP ( replace high byte with TMA value, but retain low byte )
-        &noOverflow
+        }
         ;timerShort STA2k ( store new timerShort value )
         POP2 ( discard timerShort addr ) POP ( discard low byte )
         ;io/rTIMA STA ( store new TIMA value )
         POP2 POP ( discard addition arguments, except for an extra byte to balance trailing pop )
-      &timerDisabled
+      }
     POP ( cleanup wst )
 
-    ;io/rLCDC LDA #80 AND #00 NEQ ,&lcd-on JCN
+    ;io/rLCDC LDA #80 AND #00 NEQ ?{
       #00 ;io/rLY STAk POP2 DUP ;ppuDot STA2 ( if the LCD is disabled, LY = 0, ppuDot = 0, skip rendering )
       POP2r ( discard cycle delta )
-      ,&doneModeCycle JMP
-    &lcd-on
+      !&doneModeCycle
+    }
       LIT2r =ppuDot LDA2kr ROT2r ADD2r SWP2r STA2kr POP2r ( ppuDot += cycleDelta )
         
         ;io/rSTAT LDAk DUP #03 AND #20 SFT #00 SWP ( isolate mode bits, build table offset )
@@ -467,32 +467,29 @@ BRK
   ( Quick check for base register writes )
   ( e6 is HIGH(reg8), and all registers must be on the same page )
   ( Note: No measurable performance gains for cpu_instrs test ROM, oddly )
-  OVR #e6 NEQ ,&notReg8 JCN STA JMP2r &notReg8
+  OVR #e6 NEQ ?{ STA JMP2r }
 
   ( Quick down-select to I/O range )
   OVR #ff NEQ ?MBCHandler
 
   ( Joypad P1 select )
-  DUP #00 NEQ ,&notJoypad JCN
+  DUP #00 NEQ ?{
     POP2 ( discard addr )
     #30 AND ( clear old low nibble of rP1 )
-    DUP #20 NEQ ,&notAction JCN
+    DUP #20 NEQ ?{
       ;joypad LDA #f0 AND ( get high nibble of joypad state )
       #04 SFT ( shift to low nibble )
-      ,&doneJoypad JMP
-    &notAction
-    DUP #10 NEQ ,&notDirection JCN
+      !&doneJoypad }
+    DUP #10 NEQ ?{
       ;joypad LDA #0f AND ( get low nibble of joypad state )
-      ,&doneJoypad JMP
-    &notDirection
+      !&doneJoypad }
       #0f ( everything unpressed )
     &doneJoypad
     ORA ;io/rP1 STA ( set new states, store rP1 )
-    JMP2r
-  &notJoypad
+    JMP2r }
 
   ( OAM DMA )
-  DUP #46 NEQ ,&notOAMDMA JCN
+  DUP #46 NEQ ?{
     POP2 ( discard addr )
     STH ( move high byte to rst )
     #a000 ( copy 160 bytes )
@@ -501,34 +498,30 @@ BRK
       LDA ( read byte )
       OVR #fe SWP ( OAM address to copy to )
       STA ( write byte )
-    INC GTHk ,&oamdmaLoop JCN
+    INC GTHk ?&oamdmaLoop
     POP2 ( discard loop counters )
     POPr ( discard high byte on rst )
-    JMP2r
-  &notOAMDMA
+    JMP2r }
 
   ( DIV reset )
-  DUP #04 NEQ ,&notDIV JCN
+  DUP #04 NEQ ?{
     POP2 POP ( discard all inputs )
     #0000 ;io/rDIVlow STA2k ( reset entire counter )
     POP2 ;timerShort STA2 ( also reset timerShort duplicate counter )
-    JMP2r
-  &notDIV
+    JMP2r }
 
   ( TIMA duplicate write to internal timer tracker )
-  DUP #05 NEQ ,&notTIMA JCN
+  DUP #05 NEQ ?{
     STAk ( carry out actual write )
     POP2 ( discard target addr )
     ;timerShort STA ( duplicate write to shadow byte, leaving low byte untouched )
-    JMP2r
-  &notTIMA
+    JMP2r }
 
   ( IF is a 5 bit register, so always set the top 3 bits )
-  DUP #0f NEQ ,&notIF JCN
+  DUP #0f NEQ ?{
     ROT #e0 ORA ( set top 3 bits )
     ROT ROT STA ( write )
-    JMP2r
-  &notIF
+    JMP2r }
 
   ( fall through into MBC handler )
 @MBCHandler $100 ( reserve space for MBC handler to be copied to )
@@ -565,8 +558,8 @@ JMP2r
 @print-hex ( byte -- )
   DUP
   ( lowercase hex use #27, uppercase: #07 )
-  #04 SFT #30 ADD [ #3a LTHk NIP ,&highDigit JCN #07 ADD &highDigit ] .Console/write DEO
-  #0f AND #30 ADD [ #3a LTHk NIP ,&lowDigit JCN #07 ADD &lowDigit ] .Console/write DEO
+  #04 SFT #30 ADD [ #3a LTHk NIP ?{ #07 ADD } ] .Console/write DEO
+  #0f AND #30 ADD [ #3a LTHk NIP ?{ #07 ADD } ] .Console/write DEO
 JMP2r
 
 
@@ -586,17 +579,19 @@ JMP2r
     ;theme/path .File0/name DEO2
     #0006 .File0/length DEO2
     ;theme/data .File0/read DEO2
-    .File0/success DEI2 #0006 NEQ2 ,&failed JCN
+    .File0/success DEI2 #0006 NEQ2 ?{
         ( set system colors from loaded theme )
         ;theme/r LDA2 .System/r DEO2
         ;theme/g LDA2 .System/g DEO2
         ;theme/b LDA2 .System/b DEO2
-    &failed
+    }
     #0000 .File0/name DEO2 ( close file to allow deletion while running )
 JMP2r
 @theme
     &path ".theme $1
     &data [ &r $2 &g $2 &b $2 ]
+
+@end ( Used to measure size of varaboy core )
 
 ( Note: This table is intentionally aligned such that the 41st entry will have a low byte of 0, 
   to help in detecting when it has been filled with 10 entries. There's likely a better way to do
