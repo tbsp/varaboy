@@ -4,7 +4,10 @@
 ( For each mode 0-3, if the given ppuDot has been exceeded, call the associated handler )
 ( The purpose of this approach is to reduce the unique checks performed per instruction loop )
 @modeJumpTable ( 0: hblank, 1: vblank, 2: oam scan, 3: rendering )
-[ 01c7 =scanlineDone 01c7 =vblankScanlineDone 004f =oamScan 0105 =renderScanline ]
+[ 01c7 &mode0jumpADDR =scanlineDone
+  01c7 &mode1jumpADDR =vblankScanlineDone
+  004f &mode2jumpADDR =oamScan
+  0105 &mode3jumpADDR =renderScanline ]
 
 @oamScan
   ( Note: OAM scan is actually a part of the renderScanline call right now, which means we check for sprites late in the line... )
@@ -114,7 +117,7 @@
         INC ROT ROT STA ( increment WLY for the next scanline only when the window is active )
       }
   ;io/rLY LDA ;io/rSCY LDA ADD ,&lyPlusSCY STR ( yOffset = LY + SCY )
-  #10 ;io/rLCDC LDA AND #10 EQU ;&isTileBlock0 STA ( are bg/win using tile block 0? )
+  #10 ;io/rLCDC LDA AND #10 EQU [ LIT2 &isTileBlock0ADDR =&isTileBlock0 ] STA ( are bg/win using tile block 0? )
 
   #a000 ( setup 0-160 pixel counter )
   &pxLoop
@@ -126,7 +129,7 @@
     LIT2 [ &isWinInactive $1 _&drawBackground ] JCN
       DUP #07 ADD LIT [ &wx $1 ] LTHk ?&notYetWindow ( Is px + 7 >= WX? )
         SUB ( xOffset = px - [ WX - 7 ] )
-        DUP ;&xOffset STA ( copy for later )
+        DUP [ LIT2 &xOffset0ADDR =&xOffset ] STA ( copy for later )
         #ff ;bgwinMaskedXOffset STA ( Invalidated xOffset cache to trigger tilemap/data fetch )
       LIT2 00 [ &WLY $1 ] ( yOffset = WLY )
         LIT2 40 _&lcdcTilemapMask STR
@@ -136,7 +139,7 @@
 
     &drawBackground
     DUP ;io/rSCX LDA ADD ( xOffset = px + SCX )
-      DUP ;&xOffset STA ( copy for later )
+      DUP [ LIT2 &xOffset1ADDR =&xOffset ] STA ( copy for later )
     LIT2 00 [ &lyPlusSCY $1 ] ( yOffset = LY + SCY )
       LIT2 08 _&lcdcTilemapMask STR
 
@@ -217,7 +220,7 @@
       ( rst: oamScanTable* )
 
       LDAkr ( read X/terminator )
-      DUPr LITr ff EQUr LIT2r =&endOfTable JCN2r ( check for table terminator )
+      DUPr LITr ff EQUr LIT2r &endOfTableADDR =&endOfTable JCN2r ( check for table terminator )
       LITr [ &pxPlus8 $1 ] SWPr SUBr ( spriteX = px + 8 - X )
         DUPr LITr 08 LTHr LITr _&xVisible JCNr
           POPr INC2r INC2r INC2r INC2r LITr _&spriteLoop JMPr ( not visible based on width, advance to next entry )
@@ -333,7 +336,7 @@
 
     ( update frameSkip state, TODO: Clean this up, it feels excessively complex )
     ;frameSkipCounter LDAk #01 SUB ( decrement counter )
-    #00 NEQk NIP DUP ;renderScanline/skipThisFrame STA ( store skip boolean for next frame )
+    #00 NEQk NIP DUP [ LIT2 &skipThisFrameADDR =renderScanline/skipThisFrame ] STA ( store skip boolean for next frame )
     ?{ POP ;frameSkip LDA ( reset counter ) }
     ROT ROT STA ( store new counter )
     VBLANK

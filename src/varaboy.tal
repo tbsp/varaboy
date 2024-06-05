@@ -18,16 +18,16 @@
 
 ( stdin vs hardcoded filepath )
 %READFILE { ;on-console .Console/vector DEO2 }
-%xREADFILE { ;default-gb ;filepath scpy !start } ( Note: Switch to this READFILE when using uxn32 to debug )
+%xREADFILE { ;/default-gb ;filepath scpy !start &default-gb "test_roms/cpu_instrs.gb $1 } ( Note: Switch to this READFILE when using uxn32 to debug )
 
 ( release macros )
-%INIT { ;on-frame .Screen/vector DEO2 ;on-button .Controller/vector DEO2 }
+%DBGINIT {}
 %VBLANK { POP2 POP2 BRK }
 %PRINTSTATE { }
 
 ( cli debug macros )
 ( Note: Switch to this set of macros when using uxncli to dump register trace logs )
-%xINIT { !on-frame }
+%xDBGINIT { !on-frame }
 %xVBLANK { !&afterModeChange }
 %xPRINTSTATE { print-state }
 
@@ -82,6 +82,7 @@ BRK
 
 BRK
 
+@saveExtension "sav $1
 @start ( src* -- )
 
   ( build .sav version of filename for SRAM, even if not battery backed )
@@ -135,30 +136,36 @@ BRK
   #0000 .File1/name DEO2 ( close SRAM file )
 
   #00 ;header/cartridgeType LDA
-  DUP #1f GTH ,&unsupportedMBC JCN
+  DUP #1f GTH ?&unsupportedMBC
   #10 SFT ;MBCHandlerLookup ADD2 LDA2 ( handler start address )
   ;MBCHandler ( destination addr )
   #0080 ( bytes to copy, divided by two )
+  copy2 ( Just copy the max handler size regardless, as trailing data won't hurt )
 
-  ( Just copy the max handler size regardless, as trailing data won't hurt )
-  ( Thanks to d_m for this copy routine! )
-  ( copies 2-byte pairs from src to dst )
-  ( @copy2 ( src* dst* count* -> ) )
-  #0000 SWP2 SUB2             ( src* dst* i* )
-  STH2 SWP2                   ( dst* src* [i*] )
-  &loop
-      LDA2k ROT2              ( src* bb* dst* [i*] )
-      STA2k NIP2 INC2 INC2 SWP2 INC2 INC2 INC2r   ( dst* src* [i+1*] )
-      ORAkr STHr ,&loop JCN   ( dst* src* [i+1*] )
-  POP2 POP2 POP2r             ( )
+  ;copyStart ;eram ;copyEnd ;copyStart SUB2 #01 SFT2 copy2 ( copy emulator code/data to echo RAM )
+  ;eram ;copyStart SUB2 ( calculate ROM to eram offset )
+
+  STH2k ;/offsetAddresses
+  &wAddr
+    LDA2k STH2kr ADD2 LDA2k STH2kr ADD2 SWP2 STA2
+    INC2 INC2 LDA2k ORA ?&wAddr
+  POP2 POP2r
+
+  DUP2 ,&offset STR2 ( store offset ahead )
+  STH2k LIT2r =instrJumpTable ADD2r ( calculate start offset addr )
+  ;TACShiftLookup ADD2 ( calculate end offset addr )
+  &wOp ( add offset to all table entries up to TACShiftLookup )
+    LDA2kr [ LIT2r &offset $2 ] ADD2r SWP2r STA2kr NIP2r INC2r INC2r
+    DUP2 STH2kr NEQ2 ?&wOp
+  POP2r POP2
 
   ( Initialize emulator state )
   #01 ;frameSkip STA ( Note: A value of 1 means no frameskip )
   #01 ;frameSkipCounter STA ( Must be 1 to draw the initial frame )
   
   ( Initialize CPU state )
-  ( Note: It feels strange to do this before the ROM is loaded, but doing it here
-    means we don't waste valuable safe address space on the code. )
+  ;/registerInitialState ;reg8 #0006 copy2 ( initialize register state )
+
   #91 ;io/rLCDC STA
   #ac00 ;io/rDIV STA2
   #01 ;io/rLY STA ( #00 is likely fine, tuned to better match Emulicious cpu_instrs tracelog )
@@ -168,10 +175,31 @@ BRK
   #ff #ff4d STA ( make KEY1 read #ff to workaround cpu_instrs test )
 
   #ff ;bgwinMaskedXOffset STA ( reset bgwinMaskedXOffset to ensure fresh data on the next scanline )
-
   #01 .Screen/auto DEO ( set varvara auto X, which will never change )
 
   !varaboy ( jump to program code )
+
+( A list of addresses which must have the copy offset applied to them )
+&offsetAddresses
+  =varaboy-entry/on-frameADDR
+  =varaboy-entry/on-buttonADDR
+  =on-frame/instrJumpTableADDR
+  =on-frame/bitResSetJumpTableADDR
+  =on-frame/shiftRotateJumpTableADDR
+  =on-frame/TACShiftLookupADDR
+  =on-frame/modeJumpTableADDR
+  =modeJumpTable/mode0jumpADDR
+  =modeJumpTable/mode1jumpADDR
+  =modeJumpTable/mode2jumpADDR
+  =modeJumpTable/mode3jumpADDR
+  =renderScanline/endOfTableADDR
+  =renderScanline/isTileBlock0ADDR
+  =renderScanline/xOffset0ADDR
+  =renderScanline/xOffset1ADDR
+  =scanlineDone/skipThisFrameADDR
+  $2
+
+&registerInitialState [ 00 13 00 d8 01 4d b0 01 ff fe ] [ 01 00 ]
 
 &unsupportedMBC
   ;msg-unsupportedMBC pstr
@@ -179,6 +207,18 @@ BRK
 
 @msg-unsupportedMBC
   "Unsupported 20 "MBC $1
+
+( Thanks to d_m for this copy routine! )
+( copies 2-byte pairs from src to dst )
+@copy2 ( src* dst* count* -> )
+  #0000 SWP2 SUB2             ( src* dst* i* )
+  STH2 SWP2                   ( dst* src* [i*] )
+  &loop
+      LDA2k ROT2              ( src* bb* dst* [i*] )
+      STA2k NIP2 INC2 INC2 SWP2 INC2 INC2 INC2r   ( dst* src* [i+1*] )
+      ORAkr STHr ?&loop       ( dst* src* [i+1*] )
+  POP2 POP2 POP2r             ( )
+  JMP2r
 
 @meta =&end =appicon &body
   ( name ) "Varaboy $1
@@ -194,14 +234,15 @@ BRK
 @|varaboy )
 ( We jump from the uxn entry point $0100 to echo RAM, and operate the emulator from 
   entirely within echo RAM. This allows the Game Boy addresses to remain unmodified, I hope! )
-|e000 ( ends at fdff, 1dff[7679] bytes )
 ( The flag table includes the mask and expected value for the 4 conditional instruction
-  options. It's page aligned to speed up check-flag and spaced out so we can use the masked
-  portion of the instructions directly without shifting. )
+  options. It's page aligned after being copied to speed up check-flag and spaced out so we can
+  use the masked portion of the instructions directly without shifting. )
+@copyStart
 @flag-table [ 00 80 $6 80 80 $6 00 10 $6 10 10 ]
 
-@varaboy
+@varaboy-entry
   
+  ( this copy must occur from ERAM because it overwrites the original Uxn code )
   ;filepath .File0/name DEO2
 	#8000 .File0/length DEO2 ( read first 32KB directly to memory )
 	;rom0 .File0/read DEO2
@@ -210,27 +251,32 @@ BRK
 
   #4000 .File0/length DEO2 ( setup for 8KB per ROM bank reads during runtime )
 
-  ( Setup UXN Screen vector for release mode )
+  DBGINIT ( optional bypass when dumping tracelog )
+
+  ( Setup UXN Screen vectors for release mode )
   ( Note: We execute up to the end of LY 143 for every frame vector. This should
     allow uxnemu to operate and also lock us to multiples of 60Hz. )
-  INIT ( macro to swap modes for debug )
+  [ LIT2 &on-frameADDR =on-frame ] .Screen/vector DEO2
+  [ LIT2 &on-buttonADDR =on-button ] .Controller/vector DEO2
 BRK
 
+@bankPath "_bank @bankPathDigit "A.sav $1
 @on-button ( -- )
 
   ( keyboard controls )
   .Controller/key DEI
-    [ #1b ] NEQk NIP ?&no-esc
+    DUP [ #1b ] NEQ ?&no-esc
       ( Cleanup SRAM )
       ( Note: Not currently MBC-specific! )
       ;SRAMBanks LDA DUP #00 EQU ?&noSRAM
+        #010e DEO
         ;savepath .File1/name DEO2 ( open SAV file )
 
         ;isSingleRAMBank LDA ?&saveSingleBank
           ( write current bank to its bank file )
           ;MBCRegs/RAMBank LDA ( get current bank number )
           #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
-          ;bankPathDigit STA ( replace bank character in bankPath )
+          ,bankPathDigit STR ( replace bank character in bankPath )
           ;bankPath .File0/name DEO2 ( set name for bank file )
           ;sram .File0/write DEO2 ( write out to bank file )
           #0000 .File0/name DEO2 ( close bank file )
@@ -240,7 +286,7 @@ BRK
           #00 ( counter )
           &packLoop
             DUP #41 ADD ( calculate ASCII value for bank number (A-P), hex would be nice but is harder to generate )
-            ;bankPathDigit STA ( replace bank character in bankPath )
+            ,bankPathDigit STR ( replace bank character in bankPath )
             ;bankPath .File0/name DEO2 ( set name for bank file )
             ;sram .File0/read DEO2k POP .File1/write DEO2 ( read from bank file to memory, write out to SAV file )
             #00 .File0/delete DEO ( delete bank file )
@@ -254,9 +300,9 @@ BRK
       &noSRAM
       POP
       HALT
-      ( doesn't halt in uxn32 immediately? )
+      BRK
     &no-esc
-    DUP #2f GTH OVR #3a LTH #0101 NEQ2 ?{ set-frameskip }
+    DUP #2f GTH OVR #3a LTH #0101 NEQ2 ?{ DUP set-frameskip }
   POP
 
   ( update in-memory GB format joypad byte )
@@ -346,16 +392,16 @@ JMP2r
         POP READ8PC ( get opcode at PC, PC++ )
         DUP #c0 AND ?{
           ( shifts/rotates )
-          #00 OVR #02 SFT #0e AND ;shiftRotateJumpTable ADD2 LDA2 ( obtain jump table addr )
+          #00 OVR #02 SFT #0e AND [ LIT2 &shiftRotateJumpTableADDR =shiftRotateJumpTable ] ADD2 LDA2 ( obtain jump table addr )
           JSR2 ( call handler )
           !&doneInstr
         }
-        #00 OVR #05 SFT #06 AND ;bitResSetJumpTable ADD2 LDA2 ( obtain jump table addr )
+        #00 OVR #05 SFT #06 AND [ LIT2 &bitResSetJumpTableADDR =bitResSetJumpTable ] ADD2 LDA2 ( obtain jump table addr )
         JSR2 ( call handler )
         !&doneInstr
       }
 
-      #00 OVR #10 SFT2 ;instrJumpTable ADD2 LDA2 ( obtain jump table addr )
+      #00 OVR #10 SFT2 [ LIT2 &instrJumpTableADDR =instrJumpTable ] ADD2 LDA2 ( obtain jump table addr )
       JSR2 ( call handler )
 
     &doneInstr
@@ -372,7 +418,7 @@ JMP2r
       looping over each cycle change in DIV. )
     ;io/rTAC LDA
       DUP #04 AND #00 EQU ?{ ( check if timer is enabled )
-        #00 SWP ;TACShiftLookup ADD2 LDA ( get shift value for TAC setting )
+        #00 SWP [ LIT2 &TACShiftLookupADDR =TACShiftLookup ] ADD2 LDA ( get shift value for TAC setting )
         STH2kr ( recover cycle delta, leave on rst to balance stacks on exit )
         ROT SFT2 ( shift cycle delta by shift value based on TAC setting )
         ;timerShort LDA2 ( get current timerShort value )
@@ -397,7 +443,7 @@ JMP2r
       LIT2r =ppuDot LDA2kr ROT2r ADD2r SWP2r STA2kr POP2r ( ppuDot += cycleDelta )
         
         ;io/rSTAT LDAk DUP #03 AND #20 SFT #00 SWP ( isolate mode bits, build table offset )
-        ;modeJumpTable ADD2 LDA2k ( read ppuDot threshold )
+        [ LIT2 &modeJumpTableADDR =modeJumpTable ] ADD2 LDA2k ( read ppuDot threshold )
         STH2 LTH2r LITr _&skipHandler JCNr
           INC2 INC2 LDA2 JMP2 ( call handler having passed ppuDot threshold for this mode )
         &skipHandler
@@ -413,47 +459,6 @@ JMP2r
 BRK
 
 ~src/ppu.tal
-
-(
-@emulatorState )
-( B C D E H L F A SPhigh SPlow - UXN is big endian, so no benefit to inverting pairs )
-( Note: We have to swap high/low read from ROM (u6) though... so maybe inversion has uses? )
-( Note: This order is important as it matches the r8 table order, except for F which is the [hl] location. SP doesn't have to be a part of the table. )
-( Note: inc/dec r16 would benefit from SP in the FA slot, but it's easy enough to special case that table seek )
-( Note: push/pop r16 would benefit from AF ordering instead of FA, but then the [hl] case would have to be handled differently... )
-@reg8 [ &B 00 &C 13 &D 00 &E d8 &H 01 &L 4d &F b0 &A 01 &SPhigh ff &SPlow fe ]
-@PC [ &high 01 &low 00 ]
-
-( MBC registers - shared! )
-@MBCRegs &RAMEnable $1 &RAMBank $1 &ROMBank $1 &ROMBankHigh $1 
-
-( varaboy variables )
-@cycles $2
-@prevCycles $2
-@halt $1
-@IME $1
-@ppuDot &high $1 &low $1
-@joypad $1
-@pxPaletteAddr $1
-@WLY $1 ( track LY of window independent of LY )
-@frameSkip $1
-@frameSkipCounter $1
-@timerShort $1 @timerShortLow $1
-@SRAMBanks $1 ( number of SRAM banks in use )
-@isSingleRAMBank $1 ( flag indicating if a single RAM bank is in use )
-@loadedRAMBank $1 ( RAM bank currently loaded from disk into memory at $A000 )
-
-( PPU cache to reuse data )
-@bgwinMaskedXOffset $1
-@bgwinTileDataLow $1
-@bgwinTileDataHigh $1
-
-@filepath $40
-@default-gb "test_roms/cpu_instrs.gb $1
-@savepath $40
-@saveExtension "sav $1
-@bankPath "_bank @bankPathDigit "A.sav $1
-
 ~src/opcodes.tal
 
 (
@@ -574,6 +579,8 @@ JMP2r
 @skey ( key buf -- proc ) OVR #21 LTH ,&eval JCN #00 SWP ;sput JSR2 #00 JMP2r &eval POP2 #01 JMP2r
 @pstr ( str* -- ) &w LDAk #18 DEO INC2 LDAk ,&w JCN POP2 JMP2r
 
+@copyEnd ( end of code/data to copy to echo RAM )
+
 @load-theme ( -- )
     ;theme/path .File0/name DEO2
     #0006 .File0/length DEO2
@@ -590,7 +597,46 @@ JMP2r
     &path ".theme $1
     &data [ &r $2 &g $2 &b $2 ]
 
-@end ( Used to measure size of varaboy core )
+|e01a ( start after flag-table )
+@varaboy ( where we jump to start emulator execution )
+
+|fc33 ( manually positioned just before OAM scan table, 37+128 bytes long )
+(
+@emulatorState )
+( B C D E H L F A SPhigh SPlow - UXN is big endian, so no benefit to inverting pairs )
+( Note: We have to swap high/low read from ROM (u6) though... so maybe inversion has uses? )
+( Note: This order is important as it matches the r8 table order, except for F which is the [hl] location. SP doesn't have to be a part of the table. )
+( Note: inc/dec r16 would benefit from SP in the FA slot, but it's easy enough to special case that table seek )
+( Note: push/pop r16 would benefit from AF ordering instead of FA, but then the [hl] case would have to be handled differently... )
+@reg8 [ &B $1 &C $1 &D $1 &E $1 &H $1 &L $1 &F $1 &A $1 &SPhigh $1 &SPlow $1 ]
+@PC [ &high $1 &low $1 ]
+
+( MBC registers - shared! )
+@MBCRegs &RAMEnable $1 &RAMBank $1 &ROMBank $1 &ROMBankHigh $1 
+
+( varaboy variables )
+@cycles $2
+@prevCycles $2
+@halt $1
+@IME $1
+@ppuDot &high $1 &low $1
+@joypad $1
+@pxPaletteAddr $1
+@WLY $1 ( track LY of window independent of LY )
+@frameSkip $1
+@frameSkipCounter $1
+@timerShort $1 @timerShortLow $1
+@SRAMBanks $1 ( number of SRAM banks in use )
+@isSingleRAMBank $1 ( flag indicating if a single RAM bank is in use )
+@loadedRAMBank $1 ( RAM bank currently loaded from disk into memory at $A000 )
+
+( PPU cache to reuse data )
+@bgwinMaskedXOffset $1
+@bgwinTileDataLow $1
+@bgwinTileDataHigh $1
+
+@filepath $40
+@savepath $40
 
 ( Note: This table is intentionally aligned such that the 41st entry will have a low byte of 0, 
   to help in detecting when it has been filled with 10 entries. There's likely a better way to do

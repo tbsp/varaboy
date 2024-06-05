@@ -47,6 +47,9 @@
 |c000
 @wram
 
+|e000 ( ends at fdff, 1dff[7679] bytes )
+@eram
+
 |fe00
 @oam
 
