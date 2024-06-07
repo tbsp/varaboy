@@ -4,7 +4,7 @@
 @|devices )
 |00 @System     [ &vector $2 &pad $6 &r $2 &g $2 &b $2 &debug $1 &state $1 ]
 |10 @Console    [ &vector $2 &read $1 &pad $5 &write $1 &error $1 ]
-|20 @Screen     [ &vector $2 &width $2 &height $2 &auto $1 &pad $1 &x $2 &y $2 &addr $2 &pixel $1 &sprite $1 ]
+|20 @Screen     [ &vector $2 &width $2 &height $2 &auto $1 &pad $1 &x $1 &xl $1 &y $1 &yl $1 &addr $2 &pixel $1 &sprite $1 ]
 |80 @Controller [ &vector $2 &button  $1 &key $1 ]
 |90 @Mouse      [ &vector $2 &x $2 &y $2 &state $1 &pad $3 &scrollx $2 &scrolly $2 ]
 |a0 @File0      [ &vector $2 &success $2 &stat $2 &delete $1 &append $1 &name $2 &length $2 &read $2 &write $2 ]

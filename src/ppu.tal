@@ -27,8 +27,8 @@
   ( perform rendering of this scanline now, since we don't want changes to LCDC/etc during hblank to affect this line )
 
   ( draw scanline )
-  #0000 DUP ;io/rLY LDA .Screen/y DEO2 ( set varvara Y coordinate )
-  .Screen/x DEO2 ( set varvara X coordinate )
+  ;io/rLY LDA .Screen/yl DEO ( set varvara Y coordinate )
+  [ LIT2 00 -Screen/xl ] DEO ( set varvara X coordinate )
 
   ( TODO: See if writing 8 scanlines progressively to a buffer of 2bpp tiles in UXN RAM and then using
     two 10-tile Screen/sprite calls is faster than this per-pixel drawing. Though uxnemu seems faster
