@@ -284,7 +284,6 @@ BRK
       ( Cleanup SRAM )
       ( Note: Not currently MBC-specific! )
       ;SRAMBanks LDA DUP #00 EQU ?&noSRAM
-        #010e DEO
         ;savepath .File1/name DEO2 ( open SAV file )
 
         ;isSingleRAMBank LDA ?&saveSingleBank
