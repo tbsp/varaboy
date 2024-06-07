@@ -87,9 +87,9 @@ JMP2r
 @do-JR ( instr -- instr )
   READ8PC ( read u8 )
   #ff OVR #07 SFT ?&negative POP #00 &negative SWP ( sign extension )
-  ;PC LDA2 ( read current PC )
-  ADD2 ( add offset )
-  ;PC STA2 ( store new PC )
+  ;PC LDA2k ( read current PC )
+  ROT2 ADD2 ( add offset )
+  SWP2 STA2 ( store new PC )
   TICK ( extra tick )
 JMP2r
 

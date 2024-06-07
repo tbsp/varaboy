@@ -35,7 +35,7 @@
     than uxn32 in this regard, so it might depend on the host VM. )
 
   LIT2r =oamScanTable ( setup pointer to store sprites for this scanline )
-  #02 ;io/rLCDC LDA AND #00 EQU ?&skipOAMScan ( check if sprites are enabled )
+  #0002 ;io/rLCDC LDA AND EQU ?&skipOAMScan ( check if sprites are enabled )
 
     ( Perform OAM scan, identifying the first 10 sprites which are visible on this scanline. Copy the required
       data to render each sprite on this line to the oamScanTable for use during rendering. )
@@ -106,7 +106,7 @@
 
   ( Pre-calculate and STR ahead as many values that are static for the scanline as possible, for speed )
   #01 ;io/rLCDC LDA AND ,&isBGEnabled STR
-  #20 ;io/rLCDC LDA AND #00 EQU ( check if window is disabled in rLCDC )
+  #0020 ;io/rLCDC LDA AND EQU ( check if window is disabled in rLCDC )
     ;io/rLY LDA ;io/rWY LDA LTH ORA ( or LY < WY )
     ;io/rWX LDA #a6 GTH ORA ( or WX > 166 )
       DUP ,&isWinInactive STR ( then the window is inactive this scanline )
@@ -117,7 +117,7 @@
         INC ROT ROT STA ( increment WLY for the next scanline only when the window is active )
       }
   ;io/rLY LDA ;io/rSCY LDA ADD ,&lyPlusSCY STR ( yOffset = LY + SCY )
-  #10 ;io/rLCDC LDA AND #10 EQU [ LIT2 &isTileBlock0ADDR =&isTileBlock0 ] STA ( are bg/win using tile block 0? )
+  #1010 ;io/rLCDC LDA AND EQU [ LIT2 &isTileBlock0ADDR =&isTileBlock0 ] STA ( are bg/win using tile block 0? )
 
   #a000 ( setup 0-160 pixel counter )
   &pxLoop
@@ -131,7 +131,7 @@
         SUB ( xOffset = px - [ WX - 7 ] )
         DUP [ LIT2 &xOffset0ADDR =&xOffset ] STA ( copy for later )
         #ff ;bgwinMaskedXOffset STA ( Invalidated xOffset cache to trigger tilemap/data fetch )
-      LIT2 00 [ &WLY $1 ] ( yOffset = WLY )
+        LIT2 00 [ &WLY $1 ] ( yOffset = WLY )
         LIT2 40 _&lcdcTilemapMask STR
       !&readTilemap
     &notYetWindow
