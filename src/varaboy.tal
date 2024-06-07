@@ -72,8 +72,8 @@ BRK
   ;filepath STH2
   ( read source )
   .Console/read DEI
-  DUP #20 LTH OVR #7f GTH ORA ,&end JCN
-  STH2kr slen #003f GTH2 ,&end JCN
+  DUP #20 LTH OVR #7f GTH ORA ?&end
+  STH2kr slen #003f GTH2 ?&end
     STH2r sput BRK
     &end
   POP
@@ -90,7 +90,7 @@ BRK
   ;saveExtension ( source for .sav extension )
   STH2kr slen #02 SUB STH2kr ADD2 ( get addr of start of extension, assuming 2 letter (gb) extension )
   scpy ( copy sav extension over gb )
-  STH2r .File1/name DEO2
+  LITr -File1/name DEO2r
 
   ( Detect MBC type and copy handler to @MBCHandler )
   ;filepath .File0/name DEO2
@@ -100,23 +100,23 @@ BRK
 
   #00 ;header/ramSize LDA
   ;SRAMBankCounts ADD2 LDA ( get number of SRAM banks )
-  DUP #00 EQU ,&noSRAM JCN
+  DUP #00 EQU ?&noSRAM
     DUP ;SRAMBanks STA ( store for use during banking )
     #2000 .File1/length DEO2 ( SRAM banks are 8KB )
     ;sram .File1/read DEO2 ( attempt read from file )
-    .File1/success DEI2 ORA ( check success value ) ,&saveFileExists JCN
+    .File1/success DEI2 ORA ( check success value ) ?&saveFileExists
       ( zero-fill SRAM file to full size )
       #00 ( counter )
       &SRAMFillLoop
         ;sram .File1/write DEO2
-      INC GTHk ,&SRAMFillLoop JCN
+      INC GTHk ?&SRAMFillLoop
       POP
     &saveFileExists
     ( If more than one bank is used, unpack each into a distinct file named _bankX.sav )
     ( Note: This is done so that each SRAM bank can be quickly dumped to disk during SRAM 
       bank swaps. The bank files are repacked on shutdown. )
     ;savepath .File1/name DEO2 ( Reset file seek location )
-    DUP #01 EQU DUP ;isSingleRAMBank STA ,&singleBank JCN
+    DUP #01 EQU DUP ;isSingleRAMBank STA ?&singleBank
       #2000 .File0/length DEO2 ( set length for writes to bank files )
       #00 ( counter )
       &unpackLoop
@@ -125,7 +125,7 @@ BRK
         ;bankPath .File0/name DEO2 ( set name for bank file )
         ;sram .File1/read DEO2k POP .File0/write DEO2 ( read from SAV file to memory, write out to bank file )
         #0000 .File0/name DEO2 ( close bank file )
-      INC GTHk ,&unpackLoop JCN
+      INC GTHk ?&unpackLoop
       POP
       ;savepath .File1/name DEO2 ( Reset file seek location )
     &singleBank
@@ -175,7 +175,7 @@ BRK
   #ff #ff4d STA ( make KEY1 read #ff to workaround cpu_instrs test )
 
   #ff ;bgwinMaskedXOffset STA ( reset bgwinMaskedXOffset to ensure fresh data on the next scanline )
-  #01 .Screen/auto DEO ( set varvara auto X, which will never change )
+  [ LIT2 01 -Screen/auto ] DEO ( set varvara auto X, which will never change )
 
   !varaboy ( jump to program code )
 
@@ -289,7 +289,7 @@ BRK
             ,bankPathDigit STR ( replace bank character in bankPath )
             ;bankPath .File0/name DEO2 ( set name for bank file )
             ;sram .File0/read DEO2k POP .File1/write DEO2 ( read from bank file to memory, write out to SAV file )
-            #00 .File0/delete DEO ( delete bank file )
+            [ LIT2 00 -File0/delete ] DEO ( delete bank file )
           INC GTHk ?&packLoop
           POP
           !&doneSRAMHandling
@@ -353,8 +353,8 @@ JMP2r
       STHr ( recover pending interrupt bits )
       LITr 00 ( interrupt counter on rst )
       &irqLoop
-        #00 ( byte to shift flags into )
-        #01 SFT2 ?&serviceIRQ ( shift next interrupt bit into lower byte, check if active )
+        #0001 ( byte to shift flags into, starting bit )
+        SFT2 ?&serviceIRQ ( shift next interrupt bit into lower byte, check if active )
         INCr ( increment interrupt counter )
         DUP ?&irqLoop ( loop as long as there are unhandled bits )
         POP ( cleanup wst )
@@ -435,7 +435,7 @@ JMP2r
       }
     POP ( cleanup wst )
 
-    ;io/rLCDC LDA #80 AND #00 NEQ ?{
+    ;io/rLCDC LDA #80 AND ?{
       #00 ;io/rLY STAk POP2 DUP ;ppuDot STA2 ( if the LCD is disabled, LY = 0, ppuDot = 0, skip rendering )
       POP2r ( discard cycle delta )
       !&doneModeCycle
@@ -474,10 +474,10 @@ BRK
   OVR #e6 NEQ ?{ STA JMP2r }
 
   ( Quick down-select to I/O range )
-  OVR #ff NEQ ?MBCHandler
+  OVR INC ?MBCHandler
 
   ( Joypad P1 select )
-  DUP #00 NEQ ?{
+  DUP ?{
     POP2 ( discard addr )
     #30 AND ( clear old low nibble of rP1 )
     DUP #20 NEQ ?{
@@ -544,7 +544,7 @@ BRK
   ;str-stat ;pstr JSR2 ;io/rSTAT LDA ;print-hex JSR2
   ;str-timerShort ;pstr JSR2 ;timerShort LDA ;print-hex JSR2 ;timerShortLow LDA ;print-hex JSR2 ;io/rTIMA LDA ;print-hex JSR2
   ;str-TIMA ;pstr JSR2 ;io/rTIMA LDA ;print-hex JSR2 )
-  #0a .Console/write DEO
+  [ LIT2 0a -Console/write ] DEO
 JMP2r
 
 @str-BC "BC= $1
@@ -570,14 +570,14 @@ JMP2r
 (
 @|stdlib )
 
-@scap ( str* -- end* ) LDAk #00 NEQ JMP JMP2r &w INC2 LDAk ,&w JCN JMP2r
-@sput ( chr str* -- ) ,scap JSR STA JMP2r
-@slen ( str* -- len* ) DUP2 ,scap JSR SWP2 SUB2 JMP2r
-@scmp ( a* b* -- f ) STH2 &l LDAk LDAkr STHr ANDk #00 EQU ,&e JCN NEQk ,&e JCN POP2 INC2 INC2r ,&l JMP &e NIP2 POP2r EQU JMP2r
-@sclr ( str* -- ) LDAk ,&w JCN POP2 JMP2r &w STH2k #00 STH2r STA INC2 LDAk ,&w JCN POP2 JMP2r
-@scpy ( src* dst* -- ) OVR2 LDA ,&e JCN POP2 POP2 JMP2r &e STH2 &w LDAk STH2kr STA INC2r INC2 LDAk ,&w JCN POP2 #00 STH2r STA JMP2r
-@skey ( key buf -- proc ) OVR #21 LTH ,&eval JCN #00 SWP ;sput JSR2 #00 JMP2r &eval POP2 #01 JMP2r
-@pstr ( str* -- ) &w LDAk #18 DEO INC2 LDAk ,&w JCN POP2 JMP2r
+@scap ( str* -- end* ) LDAk [ #00 NEQ JMP JMP2r ] &w INC2 LDAk ?&w JMP2r
+@sput ( chr str* -- ) scap STA JMP2r
+@slen ( str* -- len* ) DUP2 scap SWP2 SUB2 JMP2r
+@scmp ( a* b* -- f ) STH2 &l LDAk LDAkr STHr ANDk #00 EQU ?&e NEQk ?&e POP2 INC2 INC2r !&l &e NIP2 POP2r EQU JMP2r
+@sclr ( str* -- ) LDAk ?&w POP2 JMP2r &w STH2k #00 STH2r STA INC2 LDAk ?&w POP2 JMP2r
+@scpy ( src* dst* -- ) OVR2 LDA ?&e POP2 POP2 JMP2r &e STH2 &w LDAk STH2kr STA INC2r INC2 LDAk ?&w POP2 #00 STH2r STA JMP2r
+@skey ( key buf -- proc ) OVR #21 LTH ?&eval #00 SWP sput #00 JMP2r &eval POP2 #01 JMP2r
+@pstr ( str* -- ) &w LDAk #18 DEO INC2 LDAk ?&w POP2 JMP2r
 
 @copyEnd ( end of code/data to copy to echo RAM )
 

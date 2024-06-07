@@ -305,7 +305,7 @@ JMP2r
   &complete
   #00ff AND2 ( get lower byte of SP )
   OVR2 #00ff AND2 ( get lower byte of i8 )
-  ADD2k #00ff GTH2 STH ( stash C to rst, can't change #00ff GTH2 to OVR because we need a 01 result )
+  ADD2k [ #00ff GTH2 ] STH ( stash C to rst, can't change #00ff GTH2 to OVR because we need a 01 result )
   NIP ( remove high byte of i8 )
   #0f AND ( get lower nibble of i8 )
   OVR #0f AND ( get lower nibble of SP )
