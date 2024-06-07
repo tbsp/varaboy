@@ -227,6 +227,21 @@ BRK
   ( author ) "Dave 20 "VanEe 20 7f 20 "2024 $1
   &end $1
 
+@load-theme ( -- )
+    ;theme/path .File0/name DEO2
+    #0006 .File0/length DEO2
+    ;theme/data .File0/read DEO2
+    .File0/success DEI2 #0006 NEQ2 ?{
+        ( set system colors from loaded theme )
+        ;theme/r LDA2 .System/r DEO2
+        ;theme/g LDA2 .System/g DEO2
+        ;theme/b LDA2 .System/b DEO2
+    }
+    #0000 .File0/name DEO2 ( close file to allow deletion while running )
+JMP2r
+@theme
+    &path ".theme $1
+
 ~src/assets.tal
 ~src/mbcs.tal
 
@@ -460,6 +475,59 @@ BRK
 ~src/opcodes.tal
 
 (
+@uxnUtility )
+(
+@print-state ( -- )
+  ;str-BC pstr ;reg8/B LDA print-hex ;reg8/C LDA print-hex
+  ;str-DE pstr ;reg8/D LDA print-hex ;reg8/E LDA print-hex
+  ;str-HL pstr ;reg8/H LDA print-hex ;reg8/L LDA print-hex
+  ;str-AF pstr ;reg8/A LDA print-hex ;reg8/F LDA print-hex
+  ;str-SP pstr ;reg8/SPhigh LDA print-hex ;reg8/SPlow LDA print-hex
+  ;str-PC pstr ;PC/high LDA print-hex ;PC/low LDA print-hex
+  ( ;str-LY ;pstr JSR2 ;io/rLY LDA ;print-hex JSR2
+  ;str-dot ;pstr JSR2 ;ppuDot/high LDA ;print-hex JSR2 ;ppuDot/low LDA ;print-hex JSR2
+  ;str-stat ;pstr JSR2 ;io/rSTAT LDA ;print-hex JSR2
+  ;str-timerShort ;pstr JSR2 ;timerShort LDA ;print-hex JSR2 ;timerShortLow LDA ;print-hex JSR2 ;io/rTIMA LDA ;print-hex JSR2
+  ;str-TIMA ;pstr JSR2 ;io/rTIMA LDA ;print-hex JSR2 )
+  [ LIT2 0a -Console/write ] DEO
+JMP2r
+
+@str-BC "BC= $1
+@str-DE 20 "DE= $1
+@str-HL 20 "HL= $1
+@str-AF 20 "AF= $1
+@str-SP 20 "SP= $1
+@str-PC 20 "PC= $1
+@str-LY 20 "LY= $1
+@str-dot 20 "ppuDot= $1
+@str-stat 20 "stat= $1
+@str-timerShort 20 "tShort= $1
+@str-TIMA 20 20 "@$ff05 20 "= 20 "$ $1
+
+@print-hex ( byte -- )
+  DUP
+  ( lowercase hex use #27, uppercase: #07 )
+  #04 SFT #30 ADD [ #3a LTHk NIP ?{ #07 ADD } ] .Console/write DEO
+  #0f AND #30 ADD [ #3a LTHk NIP ?{ #07 ADD } ] .Console/write DEO
+JMP2r
+)
+
+(
+@|stdlib )
+
+@scap ( str* -- end* ) LDAk [ #00 NEQ JMP JMP2r ] &w INC2 LDAk ?&w JMP2r
+@sput ( chr str* -- ) scap STA JMP2r
+@slen ( str* -- len* ) DUP2 scap SWP2 SUB2 JMP2r
+@scpy ( src* dst* -- ) OVR2 LDA ?&e POP2 POP2 JMP2r &e STH2 &w LDAk STH2kr STA INC2r INC2 LDAk ?&w POP2 #00 STH2r STA JMP2r
+@pstr ( str* -- ) &w LDAk #18 DEO INC2 LDAk ?&w POP2 JMP2r
+
+(
+@scmp ( a* b* -- f ) STH2 &l LDAk LDAkr STHr ANDk #00 EQU ?&e NEQk ?&e POP2 INC2 INC2r !&l &e NIP2 POP2r EQU JMP2r
+@sclr ( str* -- ) LDAk ?&w POP2 JMP2r &w STH2k #00 STH2r STA INC2 LDAk ?&w POP2 JMP2r
+@skey ( key buf -- proc ) OVR #21 LTH ?&eval #00 SWP sput #00 JMP2r &eval POP2 #01 JMP2r
+)
+
+(
 @|writeHandler )
 
 @write8 ( value addr -- )
@@ -528,72 +596,10 @@ BRK
   ( fall through into MBC handler )
 @MBCHandler $100 ( reserve space for MBC handler to be copied to )
 
-(
-@uxnUtility )
-@print-state ( -- )
-  ;str-BC pstr ;reg8/B LDA print-hex ;reg8/C LDA print-hex
-  ;str-DE pstr ;reg8/D LDA print-hex ;reg8/E LDA print-hex
-  ;str-HL pstr ;reg8/H LDA print-hex ;reg8/L LDA print-hex
-  ;str-AF pstr ;reg8/A LDA print-hex ;reg8/F LDA print-hex
-  ;str-SP pstr ;reg8/SPhigh LDA print-hex ;reg8/SPlow LDA print-hex
-  ;str-PC pstr ;PC/high LDA print-hex ;PC/low LDA print-hex
-  ( ;str-LY ;pstr JSR2 ;io/rLY LDA ;print-hex JSR2
-  ;str-dot ;pstr JSR2 ;ppuDot/high LDA ;print-hex JSR2 ;ppuDot/low LDA ;print-hex JSR2
-  ;str-stat ;pstr JSR2 ;io/rSTAT LDA ;print-hex JSR2
-  ;str-timerShort ;pstr JSR2 ;timerShort LDA ;print-hex JSR2 ;timerShortLow LDA ;print-hex JSR2 ;io/rTIMA LDA ;print-hex JSR2
-  ;str-TIMA ;pstr JSR2 ;io/rTIMA LDA ;print-hex JSR2 )
-  [ LIT2 0a -Console/write ] DEO
-JMP2r
-
-@str-BC "BC= $1
-@str-DE 20 "DE= $1
-@str-HL 20 "HL= $1
-@str-AF 20 "AF= $1
-@str-SP 20 "SP= $1
-@str-PC 20 "PC= $1
-@str-LY 20 "LY= $1
-@str-dot 20 "ppuDot= $1
-@str-stat 20 "stat= $1
-@str-timerShort 20 "tShort= $1
-@str-TIMA 20 20 "@$ff05 20 "= 20 "$ $1
-
-@print-hex ( byte -- )
-  DUP
-  ( lowercase hex use #27, uppercase: #07 )
-  #04 SFT #30 ADD [ #3a LTHk NIP ?{ #07 ADD } ] .Console/write DEO
-  #0f AND #30 ADD [ #3a LTHk NIP ?{ #07 ADD } ] .Console/write DEO
-JMP2r
-
-
-(
-@|stdlib )
-
-@scap ( str* -- end* ) LDAk [ #00 NEQ JMP JMP2r ] &w INC2 LDAk ?&w JMP2r
-@sput ( chr str* -- ) scap STA JMP2r
-@slen ( str* -- len* ) DUP2 scap SWP2 SUB2 JMP2r
-@scmp ( a* b* -- f ) STH2 &l LDAk LDAkr STHr ANDk #00 EQU ?&e NEQk ?&e POP2 INC2 INC2r !&l &e NIP2 POP2r EQU JMP2r
-@sclr ( str* -- ) LDAk ?&w POP2 JMP2r &w STH2k #00 STH2r STA INC2 LDAk ?&w POP2 JMP2r
-@scpy ( src* dst* -- ) OVR2 LDA ?&e POP2 POP2 JMP2r &e STH2 &w LDAk STH2kr STA INC2r INC2 LDAk ?&w POP2 #00 STH2r STA JMP2r
-@skey ( key buf -- proc ) OVR #21 LTH ?&eval #00 SWP sput #00 JMP2r &eval POP2 #01 JMP2r
-@pstr ( str* -- ) &w LDAk #18 DEO INC2 LDAk ?&w POP2 JMP2r
+@theme/data
+  [ &r $2 &g $2 &b $2 ]
 
 @copyEnd ( end of code/data to copy to echo RAM )
-
-@load-theme ( -- )
-    ;theme/path .File0/name DEO2
-    #0006 .File0/length DEO2
-    ;theme/data .File0/read DEO2
-    .File0/success DEI2 #0006 NEQ2 ?{
-        ( set system colors from loaded theme )
-        ;theme/r LDA2 .System/r DEO2
-        ;theme/g LDA2 .System/g DEO2
-        ;theme/b LDA2 .System/b DEO2
-    }
-    #0000 .File0/name DEO2 ( close file to allow deletion while running )
-JMP2r
-@theme
-    &path ".theme $1
-    &data [ &r $2 &g $2 &b $2 ]
 
 |e01a ( start after flag-table )
 @varaboy ( where we jump to start emulator execution )
