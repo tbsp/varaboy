@@ -387,24 +387,22 @@ JMP2r
 
     READ8PC ( get opcode at PC, PC++ )
 
-      #cb NEQk NIP ?{
+      DUP #cb NEQ ?{
         ( Prefix instructions )
         POP READ8PC ( get opcode at PC, PC++ )
+        #00 OVR
         DUP #c0 AND ?{
           ( shifts/rotates )
-          #00 OVR #02 SFT #0e AND [ LIT2 &shiftRotateJumpTableADDR =shiftRotateJumpTable ] ADD2 LDA2 ( obtain jump table addr )
-          JSR2 ( call handler )
-          !&doneInstr
+          #02 SFT #0e AND [ LIT2 &shiftRotateJumpTableADDR =shiftRotateJumpTable ]
+          !&gotTableArgs
         }
-        #00 OVR #05 SFT #06 AND [ LIT2 &bitResSetJumpTableADDR =bitResSetJumpTable ] ADD2 LDA2 ( obtain jump table addr )
-        JSR2 ( call handler )
-        !&doneInstr
+        #05 SFT #06 AND [ LIT2 &bitResSetJumpTableADDR =bitResSetJumpTable ]
+        !&gotTableArgs
       }
-
-      #00 OVR #10 SFT2 [ LIT2 &instrJumpTableADDR =instrJumpTable ] ADD2 LDA2 ( obtain jump table addr )
-      JSR2 ( call handler )
-
-    &doneInstr
+      #00 OVR #10 SFT2 [ LIT2 &instrJumpTableADDR =instrJumpTable ]
+    &gotTableArgs
+    ADD2 LDA2 ( obtain jump table addr )
+    JSR2 ( call handler )
     POP
 
     &handleCycles
